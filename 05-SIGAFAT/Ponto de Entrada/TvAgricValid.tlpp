@@ -1,0 +1,80 @@
+#include "totvs.ch"
+#include "tlpp-core.th"
+#include "tlpp-object.th"
+
+/*/{Protheus.doc} TvAgricValid
+Realiza a validação de campos do contrato comercial.
+@obs A chamada do fonte deverá ser incluída na validação de usuário do
+     campo a ser somado, passando como parâmetro o campo a ser atualizado.
+@type function
+@version P12
+@author Ademar Fernandes Jr.
+@since 15/06/2024
+@param cCampo, character, Campo a ser atualizado.
+@return logical, True
+/*/
+User function TvAgricValid(cCampo) as logical
+    local nX       := 0
+    local lRet     := .T.
+    local aSvLine  := {}
+    local nTotArea := 0
+/*
+	oModel:addFields('MASTERSA1', ,oStruSA1)
+	oModel:addGrid('DETAILVMJ','MASTERSA1',oStruVMJ)
+	oModel:addGrid('DETAILVMK','DETAILVMJ',oStruVMK)
+*/
+    local oModel      := FwModelActive()                    as object
+    // local oModelCab   := oModel:getModel("MASTERSA1")       as object
+    local oModel1Grid := oModel:getModel("DETAILVMJ")       as object
+    local oModel2Grid := oModel:getModel("DETAILVMK")       as object
+    local nVMJ_AREPRO := oModel1Grid:getValue("VMJ_AREPRO") as numeric
+    local nVMJ_AREARR := oModel1Grid:getValue("VMJ_AREARR") as numeric
+    local nVMK_XAREPR := 0
+    local nVMK_XAREAR := 0
+
+    aSvLine := FwSaveRows()
+    for nX := 1 to oModel2Grid:Length()
+        oModel2Grid:goLine(nX)
+        if !oModel2Grid:IsDeleted()
+            if Upper(Alltrim(cCampo)) == "VMJ_AREPRO"
+                nVMK_XAREPR += oModel2Grid:getValue("VMK_XAREPR")
+            elseif Upper(Alltrim(cCampo)) == "VMJ_AREARR"
+                nVMK_XAREAR += oModel2Grid:getValue("VMK_XAREAR")
+            endif
+        endif
+    next nX
+    FwRestRows(aSvLine)
+
+    if Upper(Alltrim(cCampo)) == "VMJ_AREPRO"
+        nTotArea := nVMK_XAREPR + nVMJ_AREARR
+        oModel:LoadValue( 'DETAILVMJ', 'VMJ_AREPRO', nVMK_XAREPR )
+
+    elseif Upper(Alltrim(cCampo)) == "VMJ_AREARR"
+        nTotArea := nVMK_XAREAR + nVMJ_AREPRO
+        oModel:LoadValue( 'DETAILVMJ', 'VMJ_AREARR', nVMK_XAREAR )
+    endif
+    oModel:LoadValue( 'DETAILVMJ', 'VMJ_ARETOT', nTotArea )
+
+    /*- Valores passados pelo Almir via e-mail de 03/06/2024 as 11h30.
+    .. 0ha -> NA (Não se aplica)
+    .. < 100ha  -> PP
+    .. < 300ha  -> P
+    .. < 1000ha -> M
+    .. < 5000ha -> G
+    .. > 5000ha -> GG
+    */
+    //- Calcula o Tamanho / Segmento da Area do Cliente
+    if nTotArea = 0
+        oModel:LoadValue( 'DETAILVMJ', 'VMJ_XTAMSG', "NA" )
+    elseif nTotArea < 100
+        oModel:LoadValue( 'DETAILVMJ', 'VMJ_XTAMSG', "PP" )
+    elseif nTotArea < 300
+        oModel:LoadValue( 'DETAILVMJ', 'VMJ_XTAMSG', "P" )
+    elseif nTotArea < 1000
+        oModel:LoadValue( 'DETAILVMJ', 'VMJ_XTAMSG', "M" )
+    elseif nTotArea < 5000
+        oModel:LoadValue( 'DETAILVMJ', 'VMJ_XTAMSG', "G" )
+    else
+        oModel:LoadValue( 'DETAILVMJ', 'VMJ_XTAMSG', "GG" )
+    endif
+return lRet

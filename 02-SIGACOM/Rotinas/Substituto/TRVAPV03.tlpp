@@ -1,0 +1,161 @@
+#include "totvs.ch"
+#include "protheus.ch"
+#include "topconn.ch"
+#include "tbiconn.ch"
+
+/*/{Protheus.doc} TRVAPV03
+XXXXXXXXXXXXXXXXXXXXXXXX
+
+@type function
+@version 1.0
+@author Gustavo
+@since 18/04/2023
+@link https://gkcmp.com.br (Geeker Company)
+@see https://tdn.totvs.com/pages/releaseview.action?spaceKey=PROT&title=SD1100E+-+Rotatividade+para+cada+item+da+nota
+@return variant, Nil
+/*/
+user function TRVAPV03( cEmpX, cFilX )
+	local	bError		:= ErrorBlock( { | oError | U_GKRINT11( procName() , oError ) } ) as codeblock
+
+	PREPARE ENVIRONMENT EMPRESA cEmpX[1] FILIAL cEmpX[2] // SCHEDULE
+	//PREPARE ENVIRONMENT EMPRESA cEmpX FILIAL cFilX //DEBUG
+
+	BEGIN SEQUENCE
+		if lockByName("TRVAPV03",.F.,.F.,.T.)
+			conout("[TRVAPV03] " + fwTimeStamp() + " ambiente preparado ...")
+
+			U_TRVAPV03A()
+
+			conout("[TRVAPV03] " + fwTimeStamp() + " encerrando ambiente para...")
+		else
+			conout("[TRVAPV03] " + fwTimeStamp() + " Rotina já está em execução.")
+		endif
+	END SEQUENCE
+
+	RESET ENVIRONMENT
+return
+
+user function TRVAPV03A()
+	local aAreaX			:= fwGetArea()			as array
+
+	private cAliasSCR		:= ""					as character
+
+	getToComeBack()
+
+	if !( cAliasSCR )->( EOF() )
+		DBSelectArea( "SCR" )
+
+		while !( cAliasSCR )->( EOF() )
+			SCR->( DBGoTo( ( cAliasSCR )->SCRRECNO ) )
+
+			if SCR->( Recno() ) == ( cAliasSCR )->SCRRECNO
+				recLock( "SCR" , .F. )
+					SCR->CR_ZAPRORI := space( getSX3Cache( "CR_APROV", "X3_TAMANHO" ) )
+					SCR->CR_USER	:= ( cAliasSCR )->AK_USER
+					SCR->CR_APROV	:= ( cAliasSCR )->AK_COD
+				SCR->( msUnlock() )
+			endif
+
+			if ( cAliasSCR )->DBMRECNO > 0
+				DBM->( DBGoTo( ( cAliasSCR )->DBMRECNO ) )
+				if DBM->( Recno() ) == ( cAliasSCR )->DBMRECNO
+					recLock( "DBM" , .F. )
+						DBM->DBM_USER	:= ( cAliasSCR )->AK_USER
+						DBM->DBM_USAPRO	:= ( cAliasSCR )->AK_COD
+					DBM->( msUnlock() )
+				endif
+			endif
+
+			( cAliasSCR )->( DBSkip() )
+		enddo
+	endif
+
+	( cAliasSCR )->( DBCloseArea() )
+
+	fwRestArea( aAreaX )
+return
+
+static function getToComeBack()
+	local aAreaX		:= fwGetArea()	as array
+	local cQrySCR		:= ""			as character
+	local oStatement	:= nil			as object
+
+	cQrySCR := ""												+ CRLF
+	cQrySCR := " SELECT"										+ CRLF
+	cQrySCR += " 	SCR.R_E_C_N_O_ SCRRECNO	,"					+ CRLF
+	cQrySCR += " 	DBM.R_E_C_N_O_ DBMRECNO	,"					+ CRLF
+	cQrySCR += " 	AK_USER					,"					+ CRLF
+	cQrySCR += " 	AK_COD"										+ CRLF
+	cQrySCR += " FROM "			+ retSQLName( "SCR" ) + " SCR"	+ CRLF
+	cQrySCR += " INNER JOIN "	+ retSQLName( "ZA1" ) + " ZA1"	+ CRLF
+	cQrySCR += " ON"											+ CRLF
+	cQrySCR += "		ZA1.ZA1_COD		=	SCR.CR_ZAPRORI"		+ CRLF
+	cQrySCR += "	AND	?				>	ZA1.ZA1_DATAAT"		+ CRLF
+	cQrySCR += "	AND SCR.CR_ZMANTER	<>	'S'"				+ CRLF
+	cQrySCR += "	AND ZA1.ZA1_FILIAL	=	?"					+ CRLF
+	cQrySCR += " 	AND ZA1.D_E_L_E_T_	=	' '"				+ CRLF
+	cQrySCR += " INNER JOIN "	+ retSQLName( "SAK" ) + " SAK"	+ CRLF
+	cQrySCR += " ON"											+ CRLF
+	cQrySCR += "		SAK.AK_COD		=	SCR.CR_ZAPRORI"		+ CRLF
+	cQrySCR += "	AND SAK.AK_FILIAL	=	?"					+ CRLF
+	cQrySCR += " 	AND SAK.D_E_L_E_T_	=	' '"				+ CRLF
+
+	cQrySCR += " LEFT JOIN "	+ retSQLName( "DBM" ) + " DBM"	+ CRLF
+	cQrySCR += " ON"											+ CRLF
+	cQrySCR += "		DBM.DBM_NUM		=	SCR.CR_NUM"			+ CRLF
+	cQrySCR += "	AND DBM.DBM_TIPO	=	SCR.CR_TIPO"		+ CRLF
+	cQrySCR += "	AND DBM.DBM_USER	=	SCR.CR_USER"		+ CRLF
+	cQrySCR += "	AND DBM.DBM_USAPRO	=	SCR.CR_APROV"		+ CRLF
+	cQrySCR += "	AND DBM.DBM_APROV	=	'2'"				+ CRLF // DBM_APROV - 1=Aprovado;2=Pendente;3=Rejeitado
+	cQrySCR += "	AND DBM.DBM_FILIAL	=	?"					+ CRLF
+	cQrySCR += " 	AND DBM.D_E_L_E_T_	=	' '"				+ CRLF
+
+	cQrySCR += " WHERE"											+ CRLF
+	cQrySCR += "		SCR.CR_STATUS	IN	('01','02','04')"	+ CRLF
+	cQrySCR += "	AND SCR.CR_ZAPRORI	<>	' '"				+ CRLF
+	cQrySCR += "	AND SCR.CR_FILIAL	=	?"					+ CRLF
+	cQrySCR += "	AND SCR.D_E_L_E_T_	=	' '"				+ CRLF
+
+	/*
+	ignora status 04, 06 e 07
+
+	CR_STATUS='01' - Pendente em níveis anteriores
+	CR_STATUS='02' - Pendente
+	CR_STATUS='03' - Aprovado
+	CR_STATUS='04' - Bloqueado
+	CR_STATUS='05' - Aprovado/rejeitado pelo nível
+	CR_STATUS='06' - Rejeitado                                                                                                                             
+	CR_STATUS='07' - Documento Rejeitado ou Bloqueado por outro usuário.
+
+	https://centraldeatendimento.totvs.com/hc/pt-br/articles/360041898933-Cross-Segmentos-Totvs-Backoffice-Protheus-SIGACOM-Quais-s%C3%A3o-as-op%C3%A7%C3%B5es-do-campo-CR-STATUS-
+	*/
+	cQrySCR += "	AND SCR.CR_FILIAL + SCR.CR_NUM NOT IN"			+ CRLF
+	cQrySCR += "	("												+ CRLF
+	cQrySCR += "		SELECT SUBSCR.CR_FILIAL + SUBSCR.CR_NUM"	+ CRLF
+	cQrySCR += "		FROM "	+ retSQLName( "SCR" ) + " SUBSCR"	+ CRLF
+	cQrySCR += "		WHERE"										+ CRLF
+	cQrySCR += "			SUBSCR.CR_FILIAL	= SCR.CR_FILIAL"	+ CRLF
+	cQrySCR += "		AND SUBSCR.CR_NUM		= SCR.CR_NUM"		+ CRLF
+	cQrySCR += "		AND SUBSCR.D_E_L_E_T_	=	' '"			+ CRLF
+	cQrySCR += "		AND SUBSCR.CR_STATUS IN ('04','06','07')"	+ CRLF
+	cQrySCR += "	)"												+ CRLF
+
+	oStatement := FWExecStatement():new( cQrySCR )
+
+	//Define os parâmetros
+	oStatement:setString( 1 , dToS( dDataBase )	) // ZA1_DATAAT
+	oStatement:setString( 2 , xFilial( "ZA1" )	) // ZA1_FILIAL
+	oStatement:setString( 3 , xFilial( "SAK" )	) // AK_FILIAL
+	oStatement:setString( 4 , xFilial( "DBM" )	) // DBM_FILIAL
+	oStatement:setString( 5 , xFilial( "SCR" )	) // ZA2_FILSUB -> Este campo tem que ser filtrado com a filial da SCR
+
+	cAliasSCR := oStatement:openAlias()
+
+	//Recupera a consulta já com os parâmetros injetados
+	//conout( "[getToComeBack] " + fwTimeStamp() + " " + oStatement:getFixQuery() )
+
+	oStatement:destroy()
+	oStatement := nil
+
+	fwRestArea( aAreaX )
+return

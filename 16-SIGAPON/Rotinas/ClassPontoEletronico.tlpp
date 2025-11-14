@@ -1,0 +1,657 @@
+#INCLUDE "totvs.ch"
+#INCLUDE "protheus.ch"
+#INCLUDE "topconn.ch"
+
+Static cParEvePro := GetNewPar("ZZ_PONBA01","200") // Informar o Código do Evento para lançamento de Provento
+Static cParEveDes := GetNewPar("ZZ_PONBA02","201") // Informar o Código do Evento para lançamento de Desconto
+
+/*/{Protheus.doc} ClassPontoEletronico
+Classe para retorno dos dados do módulo SIGAPON (Ponto Eletronico).
+@type Class
+@author Cristiano Pedroni
+@since 28/08/2024
+@version 1.0
+@return aDadosBanco,aDadosSPI,aRecnoSPI,aEventoNovo,nValor,nSaldo
+/*/
+
+Class ClassPontoEletronico
+
+	data cFilBanco      as character
+	data cMatricula     as character
+	data cEvento        as character
+	data cStatus        as character
+	data cTipo          as character
+	data nValor         as numeric
+	data nQuantHr       as numeric
+	data nSaldoFecham   as numeric
+	data lFiltraData    as logical
+	data lSaldoInicial  as logical
+	data dDataFinal2Per as date
+	data aDadosSPI      as array
+	data aEventoNovo    as array
+
+	public method New() CONSTRUCTOR
+	public method GetDadosBanco()
+	public method GetDadosEventos()
+	public method GetSaldoBancoHoras()
+	public method GetSaldoFechamento()
+	public method GetRecnoBancoHoras()
+	public method GetSaldoFinalFechamento()
+	public method GetSaldoAnteriorDataInicial()
+	public method GetDebitoCredito()
+	public method GetDadosBancoDataBaixa()
+	public method GetSaldoFinalResultado()
+
+EndClass
+
+/*
+Método Construtor da classe.
+*/
+Method New(cFilBanco,cMatricula,aDadosSPI,cEvento,cStatus,cTipo,nValor,nQuantHr,lFiltraData,lSaldoInicial,nSaldoFecham,aEventoNovo,dDataFinal2Per) Class ClassPontoEletronico
+
+	Self:cFilBanco      := cFilBanco
+	Self:cMatricula     := cMatricula
+	Self:cEvento        := cEvento
+	Self:cStatus        := cStatus
+	Self:cTipo          := cTipo
+	Self:nValor         := nValor
+	Self:nQuantHr       := nQuantHr
+	Self:nSaldoFecham   := nSaldoFecham
+	Self:lFiltraData    := lFiltraData
+	Self:lSaldoInicial  := lSaldoInicial
+	Self:aDadosSPI      := aDadosSPI
+	Self:aEventoNovo    := aEventoNovo
+	Self:dDataFinal2Per := dDataFinal2Per
+
+Return
+
+/*
+Método retorna os dados do Banco de Horas - Matricula (Tabela SPI).
+*/
+Method GetDadosBanco(cFil) Class ClassPontoEletronico
+
+	Local aArea       := lj7GetArea({"SPI"})
+	Local cQuery      := ""
+	Local cAlias      := ""
+	Local aDadosBanco := {}
+
+	cQuery := " SELECT " + CRLF
+	cQuery += "     PI_FILIAL AS FILIAL, " + CRLF
+	cQuery += "     PI_MAT AS MATRICULA " + CRLF
+
+	cQuery += " FROM " + CRLF
+	cQuery += " 	" + RetSQLName("SPI") + " PI " + CRLF
+
+	cQuery += " WHERE 1 = 1 " + CRLF
+	cQuery += "     AND PI_FILIAL BETWEEN '" + cFilialDe + "' AND '" + cFilialAte + "' " + CRLF
+	cQuery += "     AND PI_CC BETWEEN '" + cCustoDe + "' AND '" + cCustoAte + "' " + CRLF
+	cQuery += "     AND PI_MAT BETWEEN '" + cMatDe + "' AND '" + cMatAte + "' " + CRLF
+	cQuery += "     AND PI_DATA BETWEEN '" + cPerInicial + "' AND '" + cPer2Fecham + "' " + CRLF
+	cQuery += "     AND PI_STATUS = '' " + CRLF
+	cQuery += "     AND PI.D_E_L_E_T_ = ' ' " + CRLF
+
+	cQuery += " GROUP BY " + CRLF
+	cQuery += "     PI_FILIAL, " + CRLF
+	cQuery += "     PI_MAT " + CRLF
+
+	cQuery += " ORDER BY " + CRLF
+	cQuery += "     PI_FILIAL, " + CRLF
+	cQuery += "     PI_MAT " + CRLF
+
+	MemoWrite("\sql\ClassPontoEletronico_GetDadosBanco_" + cFil + ".sql",cQuery)
+
+	TcQuery cQuery New Alias (cAlias := GetNextAlias())
+
+	If !(cAlias)->(Eof())
+		While !(cAlias)->(Eof())
+			aAdd(aDadosBanco,{;
+				(cAlias)->FILIAL,;
+				(cAlias)->MATRICULA})
+			(cAlias)->(dbSkip())
+		EndDo
+	EndIf
+
+	(cAlias)->(dbCloseArea())
+	lj7RestArea(aArea)
+
+Return(aDadosBanco)
+
+/*
+Método retorna os dados do Banco de Horas - Eventos (Tabela SPI).
+*/
+Method GetDadosEventos(cFil,cFilBanco,cMatricula,lFiltraData) Class ClassPontoEletronico
+
+	Local aArea     := lj7GetArea({"SPI"})
+	Local aDadosSPI := {}
+	Local cQuery    := ""
+	Local cAlias    := ""
+
+	cQuery := " SELECT " + CRLF
+	cQuery += "     PI_FILIAL AS FILIAL, " + CRLF
+	cQuery += "     PI_MAT AS MAT, " + CRLF
+	cQuery += " 	PI_CC AS CCUSTO, " + CRLF
+	cQuery += " 	PI_PD AS EVENTO, " + CRLF
+	cQuery += " 	PI_QUANT AS QUANT, " + CRLF
+	cQuery += " 	PI_DATA AS DATABANCO, " + CRLF
+	cQuery += " 	PI_STATUS AS STATUS, " + CRLF
+	cQuery += " 	PI.R_E_C_N_O_ AS RECNO " + CRLF
+
+	cQuery += " FROM " + CRLF
+	cQuery += " 	" + RetSQLName("SPI") + " PI " + CRLF
+
+	cQuery += " WHERE 1 = 1 " + CRLF
+	cQuery += "     AND PI_FILIAL = '" + cFilBanco + "' " + CRLF
+	cQuery += "     AND PI_MAT = '" + cMatricula + "' " + CRLF
+	cQuery += "     AND PI_STATUS = '' " + CRLF
+	cQuery += "     AND PI.D_E_L_E_T_ = ' ' " + CRLF
+	If lFiltraData
+		cQuery += "     AND PI_DATA > '" + cPer1Fecham + "' AND PI_DATA <= '" + cPer2Fecham + "' " + CRLF
+	Else
+		cQuery += "     AND PI_DATA >= '" + cPerInicial + "' " + CRLF
+	EndIf
+
+	cQuery += " ORDER BY " + CRLF
+	cQuery += "     PI_FILIAL, " + CRLF
+	cQuery += "     PI_MAT, " + CRLF
+	cQuery += "     PI_DATA, " + CRLF
+	cQuery += "     PI_PD " + CRLF
+
+	MemoWrite("\sql\ClassPontoEletronico_GetDadosEventos_" + cFil + ".sql",cQuery)
+
+	TcQuery cQuery New Alias (cAlias := GetNextAlias())
+
+	If !(cAlias)->(Eof())
+		While !(cAlias)->(Eof())
+			aAdd(aDadosSPI,{;
+				(cAlias)->FILIAL,;
+				(cAlias)->MAT,;
+				(cAlias)->CCUSTO,;
+				(cAlias)->EVENTO,;
+				(cAlias)->QUANT,;
+				(cAlias)->DATABANCO,;
+				(cAlias)->STATUS,;
+				(cAlias)->RECNO})
+			(cAlias)->(dbSkip())
+		EndDo
+	EndIf
+
+	(cAlias)->(dbCloseArea())
+	lj7RestArea(aArea)
+
+Return(aDadosSPI)
+
+/*
+Método retorna saldo do Banco de Horas.
+*/
+Method GetSaldoBancoHoras(cFilBanco,cEvento,cTipo,cStatus,nValor,nQuantHr) Class ClassPontoEletronico
+
+	Local lTipo1e3 := ( PosSP9( cEvento , cFilBanco , "P9_TIPOCOD" , 1 , .F. ) $ "1*3" )
+
+	IF ( cStatus <> "B" )
+		IF ( lTipo1e3 )
+			IF ( cTipo == "N" )	// Horas Normais
+				nValor	:=__TimeSum( nValor , nQuantHr )
+			Else
+				nValor	:=__TimeSum( nValor , nQuantHr )
+			EndIF
+		Else
+			IF ( cTipo == "N" )	// Horas Normais
+				nValor	:=__TimeSub( nValor , nQuantHr )
+			Else
+				nValor	:=__TimeSub( nValor , nQuantHr )
+			EndIF
+		EndIF
+	Else
+		nValor := 0
+	EndIF
+
+Return(nValor)
+
+/*
+Método retorna saldo do Fechamento do Banco de Horas de acordo com Data 1 Fechamento (parâmetro).
+*/
+Method GetSaldoFechamento(cFil,cFilBanco,cMatricula,nSaldoPer1,dDataFech1Per) Class ClassPontoEletronico
+
+	Local aArea  := GetArea()
+	Local cAlias := ""
+	Local cQuery := ""
+
+	cQuery := " SELECT " + CRLF
+	cQuery += "     TOP 1 PI_ZZSLDPA AS SALDO, " + CRLF
+	cQuery += "     PI_DATA AS DATA_BANCO " + CRLF
+	cQuery += " FROM " + CRLF
+	cQuery += " 	" + RetSQLName("SPI") + " PI " + CRLF
+	cQuery += " WHERE 1 = 1 " + CRLF
+	cQuery += "     AND PI_FILIAL = '" + cFilBanco + "' " + CRLF
+	cQuery += "     AND PI_MAT = '" + cMatricula + "' " + CRLF
+	cQuery += " 	AND PI_DATA <= '" + cPer1Fecham + "' " + CRLF
+	cQuery += "     AND PI_STATUS <> 'B' " + CRLF
+	cQuery += "     AND PI.D_E_L_E_T_ = ' ' " + CRLF
+	cQuery += " ORDER BY " + CRLF
+	cQuery += "     PI_DATA DESC " + CRLF
+
+	MemoWrite("\sql\ClassPontoEletronico_GetSaldoFechamento_" + cFil + ".sql",cQuery)
+
+	TcQuery cQuery new Alias (cAlias := GetNextAlias())
+
+	If (cAlias)->(!Eof())
+		nSaldoPer1    := (cAlias)->SALDO
+		dDataFech1Per := (cAlias)->DATA_BANCO
+	EndIf
+
+	(cAlias)->(dbCloseArea())
+	RestArea(aArea)
+
+Return(nSaldoPer1,dDataFech1Per)
+
+/*
+Método verifica se tem registro incluido no Banco de Horas para exclusap.
+*/
+Method GetRecnoBancoHoras(cFil,cFilBanco,cMatricula) Class ClassPontoEletronico
+
+	Local aArea     := GetArea()
+	Local aRecnoSPI := {}
+	Local cAlias    := ""
+	Local cQuery    := ""
+	Local cEvento   := FormatIn(Alltrim(cParEvePro) + ',' + Alltrim(cParEveDes), ',' )
+
+	cQuery := " SELECT " + CRLF
+	cQuery += "     PI.R_E_C_N_O_ AS RECNO_SPI " + CRLF
+
+	cQuery += " FROM " + CRLF
+	cQuery += " 	" + RetSQLName("SPI") + " PI " + CRLF
+
+	cQuery += " WHERE 1 = 1 " + CRLF
+	cQuery += " 	AND PI_FILIAL = '" + cFilBanco + "' " + CRLF
+	cQuery += "     AND PI_MAT = '" + cMatricula + "' " + CRLF
+	cQuery += " 	AND PI_DATA BETWEEN '" + cPer2Fecham + "' AND '" + DTOS(DaySum(STOD(cPer2Fecham),1)) + "' " + CRLF
+	cQuery += "     AND PI_STATUS <> 'B' " + CRLF
+	cQuery += "     AND PI_ZZLOG <> '' " + CRLF
+	cQuery += "     AND PI_PD IN  " + cEvento + " " + CRLF
+	cQuery += "     AND PI.D_E_L_E_T_ = ' ' " + CRLF
+
+	MemoWrite("\sql\ClassPontoEletronico_GetRecnoBancoHoras_" + cFil + ".sql",cQuery)
+
+	TcQuery cQuery new Alias (cAlias := GetNextAlias())
+
+	If (cAlias)->(!Eof())
+		While (cAlias)->(!Eof())
+			aAdd(aRecnoSPI,(cAlias)->RECNO_SPI)
+			(cAlias)->(dbSkip())
+		EndDo
+	EndIf
+
+	(cAlias)->(dbCloseArea())
+	RestArea(aArea)
+
+Return(aRecnoSPI)
+
+/*
+Método retorna Saldo Novo e Acumulado do Banco de Horas de acordo com Data 2 Fechamento (parâmetro).
+*/
+Method GetSaldoFinalFechamento(cFil,cFilBanco,cMatricula,lSaldoInicial,aEventoNovo,nSaldoFecham,nSaldoInicial,nSaldoPadrao) Class ClassPontoEletronico
+
+	Local aArea           := GetArea()
+	Local cLog            := " Evento incluido pelo Usuario " + usrFullName() + " em " + DTOC(DATE()) + " as " + Time() + " pela Rotina TERPON01"
+	Local cAlias          := ""
+	Local cQuery          := ""
+	Local cEvento         := ""
+	Local cCusto          := ""
+	Local cFlag           := "I"
+	Local dDataBanco      := ""
+	Local cTipoEvento     := ""
+	Local cPer2Inicial    := DTOS(DaySum(STOD(cPer2Fecham),1))
+	Local nHorasBanco     := 0
+	Local nSaldoAnt       := 0
+	Local nSaldoNovo      := 0
+	Local nQtdeHoras      := 0
+
+	Default nSaldoFecham  := 0
+	Default nSaldoInicial := 0
+	Default aEventoNovo   := {}
+
+	cQuery := " SELECT " + CRLF
+	cQuery += "		TOP 1 " + CRLF
+	cQuery += "     PI_DATA AS DATABANCO, " + CRLF
+	cQuery += "     PI.R_E_C_N_O_ AS RECNO, " + CRLF
+	cQuery += "     PI_QUANT AS QTDE_HORAS, " + CRLF
+	cQuery += "     PI_ZZSLDPA AS SALDO_PADRAO, " + CRLF
+	cQuery += "     PI_ZZACUM AS SALDO_ANTERIOR, " + CRLF
+	cQuery += "     PI_ZZSALDO AS SALDO_NOVO, " + CRLF
+	cQuery += "     PI_CC AS CCUSTO, " + CRLF
+	cQuery += "     PI_ZZSALDO AS SALDO_INICIAL, " + CRLF
+	If lSaldoInicial
+		cQuery += "     'SALDO_INICIAL' AS EVENTO " + CRLF
+	Else
+		cQuery += "     'SALDO_FINAL' AS EVENTO " + CRLF
+	EndIf
+
+	cQuery += " FROM " + CRLF
+	cQuery += " 	" + RetSQLName("SPI") + " PI " + CRLF
+
+	cQuery += " WHERE 1 = 1 " + CRLF
+	cQuery += "     AND PI_FILIAL = '" + cFilBanco + "' " + CRLF
+	cQuery += "     AND PI_MAT = '" + cMatricula + "' " + CRLF
+	If lSaldoInicial
+		cQuery += " 	AND PI_DATA >= '" + cPer2Inicial + "' " + CRLF
+	Else
+		cQuery += " 	AND PI_DATA <= '" + cPer2Fecham + "' " + CRLF
+	EndIf
+	cQuery += "     AND PI_STATUS <> 'B' " + CRLF
+	cQuery += "     AND PI.D_E_L_E_T_ = ' ' " + CRLF
+	cQuery += "     AND PI_DATA IN " + CRLF
+
+	cQuery += " ( " + CRLF
+	cQuery += " SELECT " + CRLF
+	If lSaldoInicial
+		cQuery += "     MIN(SPI.PI_DATA) " + CRLF
+	Else
+		cQuery += "     MAX(SPI.PI_DATA) " + CRLF
+	EndIf
+	cQuery += " FROM " + CRLF
+	cQuery += " 	" + RetSQLName("SPI") + " SPI " + CRLF
+	cQuery += " WHERE 1 = 1 " + CRLF
+	cQuery += "     AND SPI.PI_FILIAL = PI.PI_FILIAL " + CRLF
+	cQuery += "     AND SPI.PI_MAT = PI.PI_MAT " + CRLF
+	If lSaldoInicial
+		cQuery += " 	AND SPI.PI_DATA >= '" + cPer2Inicial + "' " + CRLF
+	Else
+		cQuery += " 	AND SPI.PI_DATA <= '" + cPer2Fecham + "' " + CRLF
+	EndIf
+	cQuery += "     AND SPI.D_E_L_E_T_ = ' ' " + CRLF
+	cQuery += " ) " + CRLF
+
+	cQuery += " ORDER BY " + CRLF
+	cQuery += "     PI_DATA, " + CRLF
+	If lSaldoInicial
+		cQuery += "     PI.R_E_C_N_O_ DESC " + CRLF
+	Else
+		cQuery += "     PI_PD DESC " + CRLF
+	EndIf
+
+	MemoWrite("\sql\ClassPontoEletronico_GetSaldoFinalFechamento_" + cFil + ".sql",cQuery)
+
+	TcQuery cQuery new Alias (cAlias := GetNextAlias())
+
+	If (cAlias)->(!Eof())
+
+		While (cAlias)->(!Eof())
+
+			cTipoEvento   := Alltrim((cAlias)->EVENTO)
+			cCusto        := (cAlias)->CCUSTO
+			nSaldoAnt     := (cAlias)->SALDO_ANTERIOR
+			nSaldoNovo    := (cAlias)->SALDO_NOVO
+			nQtdeHoras    := (cAlias)->QTDE_HORAS
+			nSaldoInicial := (cAlias)->SALDO_INICIAL
+			nSaldoPadrao  := (cAlias)->SALDO_PADRAO
+
+			If cTipoEvento == "SALDO_FINAL"
+				nHorasBanco   := __TimeSub(nSaldoAnt, nSaldoPadrao)
+				nSaldoInicial := (cAlias)->SALDO_INICIAL
+				dDataBanco    := STOD(cPer2Fecham)
+				If nHorasBanco < 0
+					nHorasBanco := nHorasBanco * (-1)
+					cEvento     := cParEveDes
+				Else
+					cEvento     := cParEvePro
+				EndIf
+				If nHorasBanco != 0
+					aAdd(aEventoNovo,{;
+						cFilBanco,;
+						cMatricula,;
+						dDataBanco,;
+						cEvento,;
+						cCusto,;
+						nHorasBanco,;
+						nSaldoAnt,;
+						cFlag,;
+						cLog})
+				EndIf
+				nSaldoFecham := nSaldoNovo
+			EndIf
+
+			If nSaldoFecham != 0 .and. cTipoEvento == "SALDO_INICIAL"
+				nHorasBanco :=  nSaldoFecham
+				dDataBanco  := DaySum(STOD(cPer2Fecham),1)
+				If nHorasBanco < 0
+					nHorasBanco := nHorasBanco * (-1)
+					cEvento     := cParEveDes
+				Else
+					cEvento     := cParEvePro
+				EndIf
+				If nHorasBanco != 0
+					aAdd(aEventoNovo,{;
+						cFilBanco,;
+						cMatricula,;
+						dDataBanco,;
+						cEvento,;
+						cCusto,;
+						nHorasBanco,;
+						nSaldoAnt,;
+						cFlag,;
+						cLog})
+				EndIf
+			EndIf
+
+			(cAlias)->(dbSkip())
+
+		EndDo
+
+	EndIf
+
+	(cAlias)->(dbCloseArea())
+	RestArea(aArea)
+
+Return(aEventoNovo,nSaldoFecham,nSaldoInicial,nSaldoPadrao)
+
+/*
+Método retorna o Saldo Anterior à data inicial do parametro (Tabela SPI).
+*/
+Method GetSaldoAnteriorDataInicial(cFil,cFilBanco,cMatricula) Class ClassPontoEletronico
+
+	Local aArea     := lj7GetArea({"SPI"})
+	Local cQuery    := ""
+	Local cAlias    := ""
+	Local nSaldoAnt := 0
+
+	cQuery := " SELECT " + CRLF
+	cQuery += "     PI_FILIAL AS FILIAL, " + CRLF
+	cQuery += "     PI_MAT AS MAT, " + CRLF
+	cQuery += " 	PI_CC AS CCUSTO, " + CRLF
+	cQuery += " 	PI_PD AS EVENTO, " + CRLF
+	cQuery += " 	PI_QUANT AS QUANT, " + CRLF
+	cQuery += " 	PI_DATA AS DATABANCO, " + CRLF
+	cQuery += " 	PI_STATUS AS STATUS, " + CRLF
+	cQuery += " 	PI.R_E_C_N_O_ AS RECNO " + CRLF
+
+	cQuery += " FROM " + CRLF
+	cQuery += " 	" + RetSQLName("SPI") + " PI " + CRLF
+
+	cQuery += " WHERE 1 = 1 " + CRLF
+	cQuery += "     AND PI_FILIAL = '" + cFilBanco + "' " + CRLF
+	cQuery += "     AND PI_MAT = '" + cMatricula + "' " + CRLF
+	cQuery += "     AND PI_STATUS = '' " + CRLF
+	cQuery += "     AND PI.D_E_L_E_T_ = ' ' " + CRLF
+	cQuery += "     AND PI_DATA < '" + cPerInicial + "' " + CRLF
+	cQuery += "     AND PI_DATA IN " + CRLF
+
+	cQuery += " 	( " + CRLF
+	cQuery += " 	SELECT " + CRLF
+	cQuery += " 		MAX(SPI.PI_DATA) " + CRLF
+	cQuery += " 	FROM " + CRLF
+	cQuery += " 		" + RetSQLName("SPI") + " SPI " + CRLF
+	cQuery += " 	WHERE 1 = 1 " + CRLF
+	cQuery += "     	AND SPI.PI_FILIAL = PI.PI_FILIAL " + CRLF
+	cQuery += "     	AND SPI.PI_MAT = PI.PI_MAT " + CRLF
+	cQuery += "     	AND SPI.PI_STATUS = '' " + CRLF
+	cQuery += "     	AND SPI.D_E_L_E_T_ = ' ' " + CRLF
+	cQuery += "     	AND SPI.PI_DATA < '" + cPerInicial + "' " + CRLF
+	cQuery += " 	) " + CRLF
+
+	cQuery += " ORDER BY " + CRLF
+	cQuery += "     PI_FILIAL, " + CRLF
+	cQuery += "     PI_MAT, " + CRLF
+	cQuery += "     PI_DATA, " + CRLF
+	cQuery += "     PI_PD " + CRLF
+
+	MemoWrite("\sql\ClassPontoEletronico_GetSaldoAnteriorDataInicial_" + cFil + ".sql",cQuery)
+
+	TcQuery cQuery New Alias (cAlias := GetNextAlias())
+
+	If !(cAlias)->(Eof())
+		nSaldoAnt := (cAlias)->QUANT
+	EndIf
+
+	(cAlias)->(dbCloseArea())
+	lj7RestArea(aArea)
+
+Return(nSaldoAnt)
+
+/*
+Método retorna os dados do Débito e Crédito do Banco de Horas (Tabela SPI).
+*/
+Method GetDebitoCredito(cFil,cFilBanco,cMatricula,) Class ClassPontoEletronico
+
+	Local aArea         := lj7GetArea({"SPI","SP9"})
+	Local cParTpCond    := GetNewPar("ZZ_PONBA03","24") // Informar o tipo de condicao para Evento de debito
+	Local cQuery        := ""
+	Local cAlias        := ""
+	Local nQuant        := 0
+	Local nHorasCredito := 0
+	Local nHorasDebito  := 0
+	Local nSaldoFolha   := 0
+
+	cQuery := " SELECT " + CRLF
+	cQuery += "     PI_FILIAL AS FILIAL, " + CRLF
+	cQuery += "     PI_MAT AS MATRICULA, " + CRLF
+	cQuery += "     PI_QUANT AS QUANT, " + CRLF
+	cQuery += "     P9_TIPOCOD AS TIPO_EVENTO " + CRLF
+
+	cQuery += " FROM " + CRLF
+	cQuery += " 	" + RetSQLName("SPI") + " PI " + CRLF
+
+	cQuery += " INNER JOIN " + CRLF
+	cQuery += " 	" + RetSQLName("SP9") + " P9 " + CRLF
+
+	cQuery += " ON 1 = 1 " + CRLF
+	cQuery += "     AND P9_FILIAL = '" + xFilial("SP9") + "' " + CRLF
+	cQuery += "     AND P9_CODIGO = PI_PD " + CRLF
+	cQuery += "     AND P9.D_E_L_E_T_ = ' ' " + CRLF
+
+	cQuery += " WHERE 1 = 1 " + CRLF
+	cQuery += "     AND PI_FILIAL = '" + cFilBanco + "' " + CRLF
+	cQuery += "     AND PI_MAT = '" + cMatricula + "' " + CRLF
+	cQuery += "     AND PI_DATA BETWEEN '" + DTOS(DaySum(STOD(cPer1Fecham),1)) + "' AND '" + cPer2Fecham + "' " + CRLF
+	cQuery += "     AND PI_STATUS = '' " + CRLF
+	cQuery += "     AND PI.D_E_L_E_T_ = ' ' " + CRLF
+
+	cQuery += " ORDER BY " + CRLF
+	cQuery += "     PI_FILIAL, " + CRLF
+	cQuery += "     PI_MAT, " + CRLF
+	cQuery += "     PI_DATA " + CRLF
+
+	MemoWrite("\sql\ClassPontoEletronico_GetDebitoCredito_" + cFil + ".sql",cQuery)
+
+	TcQuery cQuery New Alias (cAlias := GetNextAlias())
+
+	If !(cAlias)->(Eof())
+		While !(cAlias)->(Eof())
+			nQuant  := (cAlias)->QUANT
+			If (cAlias)->TIPO_EVENTO $ cParTpCond
+				nHorasDebito  := __TimeSum( nHorasDebito , nQuant )
+			Else
+				nHorasCredito := __TimeSum( nHorasCredito , nQuant )
+			EndIf
+			(cAlias)->(dbSkip())
+		EndDo
+	EndIf
+
+	nHorasDebito := nHorasDebito * (-1)
+	nSaldoFolha  := (nHorasCredito + nHorasDebito)
+
+	(cAlias)->(dbCloseArea())
+	lj7RestArea(aArea)
+
+Return(nSaldoFolha)
+
+/*
+Método retorna os dados do Banco de Horas para atualização do Status e Data Baixa (Tabela SPI).
+*/
+Method GetDadosBancoDataBaixa(cFil) Class ClassPontoEletronico
+
+	Local aArea       := lj7GetArea({"SPI"})
+	Local cQuery      := ""
+	Local cAlias      := ""
+	Local aDadosBanco := {}
+
+	cQuery := " SELECT " + CRLF
+	cQuery += "     PI.R_E_C_N_O_ AS RECNO_SPI " + CRLF
+
+	cQuery += " FROM " + CRLF
+	cQuery += " 	" + RetSQLName("SPI") + " PI " + CRLF
+
+	cQuery += " WHERE 1 = 1 " + CRLF
+	cQuery += "     AND PI_FILIAL BETWEEN '" + cFilialDe + "' AND '" + cFilialAte + "' " + CRLF
+	cQuery += "     AND PI_MAT BETWEEN '" + cMatDe + "' AND '" + cMatAte + "' " + CRLF
+	cQuery += "     AND PI_DATA BETWEEN '" + cDataInicial + "' AND '" + cDataFinal + "' " + CRLF
+	cQuery += "     AND PI.D_E_L_E_T_ = ' ' " + CRLF
+	If cTipoBaixa == "1"
+		cQuery += "     AND PI_STATUS = '' " + CRLF
+	Else
+		cQuery += "     AND PI_STATUS <> '' " + CRLF
+		cQuery += "     AND PI_DTBAIX = '" + cDataBaixa + "' " + CRLF
+	EndIf
+
+	cQuery += " ORDER BY " + CRLF
+	cQuery += "     PI.R_E_C_N_O_ " + CRLF
+
+	MemoWrite("\sql\ClassPontoEletronico_GetDadosBancoDataBaixa_" + cFil + ".sql",cQuery)
+
+	TcQuery cQuery New Alias (cAlias := GetNextAlias())
+
+	If !(cAlias)->(Eof())
+		While !(cAlias)->(Eof())
+			aAdd(aDadosBanco,(cAlias)->RECNO_SPI)
+			(cAlias)->(dbSkip())
+		EndDo
+	EndIf
+
+	(cAlias)->(dbCloseArea())
+	lj7RestArea(aArea)
+
+Return(aDadosBanco)
+
+/*
+Método retorna os dados do Saldo Final do 2 periodo de Fechamento para atualizacao do Resultado.
+*/
+Method GetSaldoFinalResultado(cFil,cFilBanco,cMatricula,dDataFinal2Per) Class ClassPontoEletronico
+
+	Local aArea       := lj7GetArea({"SPI"})
+	Local cQuery      := ""
+	Local cAlias      := ""
+	Local nSaldoFinal := 0
+
+	cQuery := "	SELECT  " + CRLF
+	cQuery += "		TOP 1 PI_ZZSLDPA AS SALDO_FINAL " + CRLF
+	cQuery += " FROM " + CRLF
+	cQuery += " 	" + RetSQLName("SPI") + " PI " + CRLF
+	cQuery += "	WHERE 1 = 1 " + CRLF
+	cQuery += "     AND PI_FILIAL = '" + cFilBanco + "' " + CRLF
+	cQuery += "     AND PI_MAT = '" + cMatricula + "' " + CRLF
+	cQuery += "		AND PI_DATA = '" + dDataFinal2Per + "' " + CRLF
+	cQuery += "     AND PI.D_E_L_E_T_ = ' ' " + CRLF
+	cQuery += " ORDER BY " + CRLF
+	cQuery += " 	PI_PD DESC " + CRLF
+
+	MemoWrite("\sql\ClassPontoEletronico_GetSaldoFinalResultado_" + cFil + ".sql",cQuery)
+
+	TcQuery cQuery New Alias (cAlias := GetNextAlias())
+
+	If !(cAlias)->(Eof())
+		nSaldoFinal := fConvHr((cAlias)->SALDO_FINAL,"D")
+	EndIf
+
+	(cAlias)->(dbCloseArea())
+	lj7RestArea(aArea)
+
+Return(nSaldoFinal)

@@ -1,0 +1,924 @@
+#Include "tlpp-core.th"
+#Include 'protheus.ch'
+#Include 'RwMake.ch'
+#Include 'Font.ch'
+#Include 'Colors.ch'
+#Include 'TopConn.ch'
+
+//--------------------------------------------------------------------------------//
+/*/{Protheus.doc} TvImpZebra
+Rotina para impressao de Etiqueta Zebra com Cod.Barras
+@type function
+@version 1.0
+@author Ademar Fernandes Jr
+@Readaptado por : Patini ||Data: 10/2024
+@since 26/10/2023
+@link https://gkcmp.com.br (Geeker Company)
+@return variant, Nil
+/*/
+//--------------------------------------------------------------------------------//
+User Function TvImpZebra(aParam)
+	local cRetorno := ""
+	local cProcEmp := ""
+	local cProcFil := ""
+
+	private lIsInJob := (type("oMainWnd")<>"O")
+	private cRotina  := "[ TvImpZebra ] "
+	private cVerRot  := "V231025" //--Versao da rotina
+	private aLjArea  := {}
+
+	private oImpZebra := TvImpZebra():new()
+
+	default aParam := {"01","01"}
+
+	IF lIsInJob
+		cProcEmp := aParam[1]
+		cProcFil := aParam[2]
+
+		rpcClearEnv()
+		RpcSetType(3)
+		RpcSetEnv(cProcEmp, cProcFil)
+	EndIf
+
+	ConOut( cRotina+ cVerRot+' - INICIO ----------------------------------> ' + TIME())
+
+	if !lIsInJob
+		//-Processa( bAcao, cTitulo, cMsg, lAborta )
+		Processa({|| oImpZebra:execImpZebra()}, "Faz a impressao de etiqueta em impressora Zebra.", "Processando...")
+	else
+		oImpZebra:execImpZebra()
+	endif
+
+	ConOut( cRotina+ cVerRot+' - FINAL -----------------------------------> ' + TIME())
+
+	cRetorno := oImpZebra:cError
+	FreeObj(oImpZebra)
+return cRetorno
+
+/*/{Protheus.doc} TvImpZebra
+Classe para impressao de Etiqueta Zebra com Cod.Barras
+@type class
+@version 1.0
+@author Ademar Fernandes Jr.
+@since 26/10/2023
+/*/
+	Class TvImpZebra
+
+		public data cError	  as character
+		private data cAlias1Q as character
+		private data cAlias1P as character
+		private data cTpEtiq  as character
+		private data cProduto as character
+		private data cProdde  as character
+		private data cProdate as character
+		private data cLocalde as character
+		private data cLocalAte as character
+		private data cGrupode as character
+		private data cGrupoate as character
+		private data cQrCodBar as character
+		private data nQtdImp  as numeric
+		private data cSerie   as character
+		private data cNFiscal as character
+		private data cFornec  as character
+		private data cLojaFor as character
+		private data cLocaliz as character
+
+		public method new() constructor
+		public method execImpZebra()	&& metodo que chama dos métodos de execução de Envio
+
+		private method tela1Param()
+		private method tela2Param()
+		private method tela3Param()
+		private method tela4Param()
+		private method etiqProd(nQtdd)
+		private method etiqColl(nQtdd)
+		private method getLocaliz()
+		private method etiqLocaliz(nQtdd)
+
+	endClass
+
+/*/{Protheus.doc} TvImpZebra::new
+Metodo construtor da classe
+@type method
+@version 1.0
+@author Ademar Fernandes Jr.
+@since 26/10/2023
+@return variant, return_description
+/*/
+method new() class TvImpZebra
+
+	::cError   := ""
+	::cAlias1Q := ""
+	::cAlias1P := ""
+
+	::cTpEtiq  := ""
+	::cProduto := ""
+	::cProdde  := ""
+	::cProdate := ""
+	::cLocalde := ""
+	::cLocalAte := ""
+	::cGrupode := ""
+	::cGrupoate := ""
+	::cQrCodBar := ""
+	::cSerie   := ""
+	::cNFiscal := ""
+	::cFornec  := ""
+	::cLojaFor := ""
+	::nQtdImp  := 1
+	::cLocaliz := ""
+
+Return self
+
+/*/{Protheus.doc} TvImpZebra::execImpZebra
+Metodo responsavel pela ordenaçao e execuçao dos demais metodos
+@type method
+@version 1.0
+@author Ademar Fernandes Jr.
+@since 27/10/2023
+@return variant, Nil
+/*/
+method execImpZebra() class TvImpZebra
+	local nTReg := 0
+
+	if ::tela1Param()
+
+		if ::cTpEtiq == "1"	//-Etiq Produto
+			Do While .T.
+				if !::tela2Param()
+					Exit
+				else
+					if !Empty(::cNFiscal+::cSerie)
+						dbSelectArea("SD1")
+						dbSetOrder(1)   //-D1_FILIAL+D1_DOC+D1_SERIE+D1_FORNECE+D1_LOJA+D1_COD+D1_ITEM
+						If !dbSeek(FWxFilial("SD1")+::cNFiscal+::cSerie+::cFornec+::cLojaFor,.F.)
+							MsgAlert(OemToAnsi("NF de Saída não encontrada."),OemToAnsi("[TerraVerde] Atenção!"))
+							Return .F.
+						else
+							While !Eof() .And.;
+									SD1->(D1_FILIAL+D1_DOC+D1_SERIE+D1_FORNECE+D1_LOJA) == FWxFilial("SD1")+::cNFiscal+::cSerie+::cFornec+::cLojaFor
+
+								::cProduto := D1_COD
+								::etiqProd()
+
+								dbSelectArea("SD1")
+								dbSkip()
+							Enddo
+						Endif
+
+					elseif !Empty(::cProduto)
+						::etiqProd(::nQtdImp)
+					endIf
+				endIf
+			Enddo
+
+		elseif ::cTpEtiq == "2"	//-Etiq Localização
+			Do While .T.
+				if !::tela3Param()
+					Exit
+				else
+					if !Empty(::cLocalde) .or. !Empty(::cLocalAte)
+						::etiqLocaliz()
+					else
+						//- Em 2023.11.22 o Lucas pediu para comentar essa funcionalidade!!!
+						// nTReg := ::getLocaliz()
+						nTReg := 0
+						if nTReg > 0
+							if !MsgYesNo(OemToAnsi("Confirma a impressão de "+Alltrim(Str(nTReg))+" etiquetas zebra ?"),OemToAnsi("[TerraVerde] Atenção!"))
+								self:cError := "Cancelado pelo usuario!"
+							else
+
+								While !Eof()
+									::cLocalde := BZ_LOCALI2
+									::cLocalAte := BZ_LOCALI2
+									::etiqLocaliz()
+
+									dbSelectArea(::cAlias1Q)
+									dbSkip()
+								Enddo
+							endif
+						endif
+					endif
+				endif
+			Enddo
+		elseif ::cTpEtiq == "3" //-Etiq Collection
+			Do While .T.
+				if !::tela4Param()
+					Exit
+				else
+					if !Empty(::cNFiscal+::cSerie)
+						dbSelectArea("SD1")
+						dbSetOrder(1)   //-D1_FILIAL+D1_DOC+D1_SERIE+D1_FORNECE+D1_LOJA+D1_COD+D1_ITEM
+						If !dbSeek(FWxFilial("SD1")+::cNFiscal+::cSerie+::cFornec+::cLojaFor,.F.)
+							MsgAlert(OemToAnsi("NF de Saída não encontrada."),OemToAnsi("[TerraVerde] Atenção!"))
+							Return .F.
+						else
+							While !Eof() .And.;
+									SD1->(D1_FILIAL+D1_DOC+D1_SERIE+D1_FORNECE+D1_LOJA) == FWxFilial("SD1")+::cNFiscal+::cSerie+::cFornec+::cLojaFor
+
+								::cProdde := D1_COD
+								::cProdate:= D1_COD
+								::etiqColl()
+
+								dbSelectArea("SD1")
+								dbSkip()
+							Enddo
+						Endif
+
+					elseif !Empty(::cProdde) .or. !Empty(::cProdate)
+						::etiqColl(::nQtdImp)
+					endIf
+				endIf
+			Enddo
+		endif
+	endif
+Return
+
+/*/{Protheus.doc} TvImpZebra::tela1Param
+Metodo responsavel por apresentar tela de escolha do tipo de etiqueta
+@type method
+@version 1.0
+@author Ademar Fernandes Jr.
+@since 30/10/2023
+@return variant, True / False
+/*/
+method tela1Param() class TvImpZebra
+	local lRet      := .T.
+	local aParamBox := {}
+	local cTitle	:= OemToAnsi("Impressão de Etiquetas Zebra -")
+	local aRetBox   := {}
+	local bOk       := {|| (.T.)}
+	local aButtons  := {}
+	local lCentered := .T.
+	local nPosX     := 0
+	local nPosY     := 0
+	local cLoad     := "" //--ProcName(1)
+	local lCanSave  := .F.
+	local lUserSave := .F.
+
+	local aTpEtiq	:= StrTokArr("1- Etiq Produto;2- Etiq Localização;3- Etiq Collection",";")
+
+	// Parametros da função Parambox()
+	// -------------------------------
+	// 1 - < aParametros > - Vetor com as configurações
+	// 2 - < cTitle >      - Título da janela
+	// 3 - < aRet >        - Vetor passador por referencia que contém o retorno dos parâmetros
+	// 4 - < bOk >         - Code block para validar o botão Ok
+	// 5 - < aButtons >    - Vetor com mais botões além dos botões de Ok e Cancel
+	// 6 - < lCentered >   - Centralizar a janela
+	// 7 - < nPosX >       - Se não centralizar janela coordenada X para início
+	// 8 - < nPosY >       - Se não centralizar janela coordenada Y para início
+	// 9 - < oDlgWizard >  - Utiliza o objeto da janela ativa
+	//10 - < cLoad >       - Nome do perfil se caso for carregar
+	//11 - < lCanSave >    - Salvar os dados informados nos parâmetros por perfil
+	//12 - < lUserSave >   - Configuração por usuário
+
+	// Tipo 1 -> MsGet()
+	//			[2]-Descricao
+	//          [3]-String contendo o inicializador do campo
+	//          [4]-String contendo a Picture do campo
+	//          [5]-String contendo a validacao
+	//          [6]-Consulta F3
+	//          [7]-String contendo a validacao When
+	//          [8]-Tamanho do MsGet
+	//          [9]-Flag .T./.F. Parametro Obrigatorio ?
+	// Tipo 2 -> Combo
+	//           [2]-Descricao
+	//           [3]-Numerico contendo a opcao inicial do combo
+	//           [4]-Array contendo as opcoes do Combo
+	//           [5]-Tamanho do Combo
+	//           [6]-Validacao
+	//           [7]-Flag .T./.F. Parametro Obrigatorio ?
+	// Tipo 11 -> MultiGet (Memo):
+	// 			[2] = Descrição
+	// 			[3] = Inicializador padrão
+	// 			[4] = Validação
+	// 			[5] = When
+	// 			[6] = Campo com preenchimento obrigatório .T.=Sim .F.=Não (incluir a validação na função ParamOk)
+
+	aadd(aParamBox, {2 , "Tipo de Etiqueta ", 1, aTpEtiq, 100, "", .T.})
+
+	//-ParamBox(aParametros,cTitle,aRet,bOk,aButtons,lCentered,nPosX,nPosY,oDlgWizard,cLoad,lCanSave,lUserSave)
+	if !ParamBox(aParamBox,cTitle,aRetBox,bOk,aButtons,lCentered,nPosX,nPosY,,cLoad,lCanSave,lUserSave)
+		lRet := .F.
+	else
+		::cTpEtiq := iif(valType(aRetBox[1])=="N",Alltrim(Str(aRetBox[1])),SubStr(aRetBox[1],1,1))
+
+		MV_PAR01 := ""	//-Space(Len(MV_PAR01))
+	endif
+Return lRet
+
+/*/{Protheus.doc} TvImpZebra::tela2Param
+Metodo responsavel por apresentar tela para escolha do produto ou NF
+@type method
+@version 1.0
+@author Ademar Fernandes Jr.
+@since 30/10/2023
+@return variant, True / False
+/*/
+method tela2Param() class TvImpZebra
+	local lRet      := .T.
+	local aParamBox := {}
+	local cTitle	:= OemToAnsi("Impressão de Etiqueta de Produto -")
+	local aRetBox   := {}
+	local bOk       := {|| (.T.)}
+	local aButtons  := {}
+	local lCentered := .T.
+	local nPosX     := 0
+	local nPosY     := 0
+	local cLoad     := "" //--ProcName(1)
+	local lCanSave  := .F.
+	local lUserSave := .F.
+
+	// local aQtdImp	:= StrTokArr("1- Por Produto;2- Qtd do Item da NF",";")
+
+	// Parametros da função Parambox()
+	// -------------------------------
+	// 1 - < aParametros > - Vetor com as configurações
+	// 2 - < cTitle >      - Título da janela
+	// 3 - < aRet >        - Vetor passador por referencia que contém o retorno dos parâmetros
+	// 4 - < bOk >         - Code block para validar o botão Ok
+	// 5 - < aButtons >    - Vetor com mais botões além dos botões de Ok e Cancel
+	// 6 - < lCentered >   - Centralizar a janela
+	// 7 - < nPosX >       - Se não centralizar janela coordenada X para início
+	// 8 - < nPosY >       - Se não centralizar janela coordenada Y para início
+	// 9 - < oDlgWizard >  - Utiliza o objeto da janela ativa
+	//10 - < cLoad >       - Nome do perfil se caso for carregar
+	//11 - < lCanSave >    - Salvar os dados informados nos parâmetros por perfil
+	//12 - < lUserSave >   - Configuração por usuário
+
+	aadd(aParamBox, {1 , "Cod. Produto "     , Space(TamSX3("D1_COD")[1])    , "@!" , "Vazio() .Or. ExistCpo('SB1')", "SB1", ".T." , 80, .F.})
+	aadd(aParamBox, {1 , "Qtd pra impressao ", 1							 , "@99", "Positivo()"				    , ""   , ".T." , 60, .F.})
+	aadd(aParamBox, {1 , ""					 , ""							 , ""   , ""						    , ""   , ".T." ,  0, .F.})
+
+	aadd(aParamBox, {1 , "Numero da NF "     , Space(TamSX3("D1_DOC")[1])    , "@!" , "Vazio() .Or. ExistCpo('SF1')", "SF1", ".T." , 80, .F.})
+	aadd(aParamBox, {1 , "Serie da NF "      , Space(TamSX3("D1_SERIE")[1])  , "@!" , ""                            , ""   , ".T." , 60, .F.})
+	aadd(aParamBox, {1 , "Fornecedor da NF " , Space(TamSX3("D1_FORNECE")[1]), "@!" , "Vazio() .Or. ExistCpo('SA2')", "SA2", ".T." , 80, .F.})
+	aadd(aParamBox, {1 , "Loja da NF "       , Space(TamSX3("D1_LOJA")[1])   , "@!" , ""                            , ""   , ".T." , 60, .F.})
+	aAdd(aParamBox, {2 , "Tipo de Impressão:", ::cQrCodBar, {"1=QrCode", "2=Codigo de Barras"}, 090, ".T.", .T.})
+
+	//-ParamBox(aParametros,cTitle,aRet,bOk,aButtons,lCentered,nPosX,nPosY,oDlgWizard,cLoad,lCanSave,lUserSave)
+	if !ParamBox(aParamBox,cTitle,aRetBox,bOk,aButtons,lCentered,nPosX,nPosY,,cLoad,lCanSave,lUserSave)
+		lRet := .F.
+	else
+		::cProduto := aRetBox[1]
+		::nQtdImp  := aRetBox[2]
+		::cNFiscal := aRetBox[4]
+		::cSerie   := aRetBox[5]
+		::cFornec  := aRetBox[6]
+		::cLojaFor := aRetBox[7]
+		::cQrCodBar:= aRetBox[8]
+	endif
+Return lRet
+
+/*/{Protheus.doc} TvImpZebra::tela3Param
+Metodo responsavel por apresentar tela para escolha da localizaçao
+@type method
+@version 1.0
+@author Ademar Fernandes Jr.
+@since 31/10/2023
+@return variant, True / False
+/*/
+method tela3Param() class TvImpZebra
+	local lRet      := .T.
+	local aParamBox := {}
+	local cTitle	:= OemToAnsi("Impressão de Etiqueta de Localização -")
+	local aRetBox   := {}
+	local bOk       := {|| (.T.)}
+	local aButtons  := {}
+	local lCentered := .T.
+	local nPosX     := 0
+	local nPosY     := 0
+	local cLoad     := "" //--ProcName(1)
+	local lCanSave  := .F.
+	local lUserSave := .F.
+
+	// local aQtdImp	:= StrTokArr("1- Por Produto;2- Qtd do Item da NF",";")
+
+	// Parametros da função Parambox()
+	// -------------------------------
+	// 1 - < aParametros > - Vetor com as configurações
+	// 2 - < cTitle >      - Título da janela
+	// 3 - < aRet >        - Vetor passador por referencia que contém o retorno dos parâmetros
+	// 4 - < bOk >         - Code block para validar o botão Ok
+	// 5 - < aButtons >    - Vetor com mais botões além dos botões de Ok e Cancel
+	// 6 - < lCentered >   - Centralizar a janela
+	// 7 - < nPosX >       - Se não centralizar janela coordenada X para início
+	// 8 - < nPosY >       - Se não centralizar janela coordenada Y para início
+	// 9 - < oDlgWizard >  - Utiliza o objeto da janela ativa
+	//10 - < cLoad >       - Nome do perfil se caso for carregar
+	//11 - < lCanSave >    - Salvar os dados informados nos parâmetros por perfil
+	//12 - < lUserSave >   - Configuração por usuário
+
+	aadd(aParamBox, {1 , "Localização de :"      , Space(TamSX3("BZ_LOCALI2")[1]), "@!", ""								, "SBZ"	, ".T." , 80, .F.})
+	aadd(aParamBox, {1 , "Localização ate: "      , Space(TamSX3("BZ_LOCALI2")[1]), "@!", ""								, "SBZ"	, ".T." , 80, .F.})
+	aAdd(aParamBox, {2 , "Tipo de Impressão:", ::cQrCodBar, {"1=QrCode", "2=Codigo de Barras"}, 090, ".T.", .T.})
+	// aadd(aParamBox, {1 , "Numero da NF "     , Space(TamSX3("D1_DOC")[1])    , "@!", "Vazio() .Or. ExistCpo('SF1')" , "SF1" , ".T." , 80, .F.})
+
+	//-ParamBox(aParametros,cTitle,aRet,bOk,aButtons,lCentered,nPosX,nPosY,oDlgWizard,cLoad,lCanSave,lUserSave)
+	if !ParamBox(aParamBox,cTitle,aRetBox,bOk,aButtons,lCentered,nPosX,nPosY,,cLoad,lCanSave,lUserSave)
+		lRet := .F.
+	else
+		::cLocalde := aRetBox[1]
+		::cLocalAte:= aRetBox[2]
+		::cQrCodBar:= aRetBox[3]
+	endif
+Return lRet
+
+/*/{Protheus.doc} TvImpZebra::tela4Param
+Metodo responsavel por apresentar tela para escolha da Collection
+@type method
+@version 1.0
+@author Patini
+@since 10/2024
+@return variant, True / False
+/*/
+method tela4Param() class TvImpZebra
+	local lRet      := .T.
+	local aParamBox := {}
+	local cTitle	:= OemToAnsi("Impressão de Etiqueta de Collection -")
+	local aRetBox   := {}
+	local bOk       := {|| (.T.)}
+	local aButtons  := {}
+	local lCentered := .T.
+	local nPosX     := 0
+	local nPosY     := 0
+	local cLoad     := "" //--ProcName(1)
+	local lCanSave  := .F.
+	local lUserSave := .F.
+
+
+	// local aQtdImp	:= StrTokArr("1- Por Produto;2- Qtd do Item da NF",";")
+
+	// Parametros da função Parambox()
+	// -------------------------------
+	// 1 - < aParametros > - Vetor com as configurações
+	// 2 - < cTitle >      - Título da janela
+	// 3 - < aRet >        - Vetor passador por referencia que contém o retorno dos parâmetros
+	// 4 - < bOk >         - Code block para validar o botão Ok
+	// 5 - < aButtons >    - Vetor com mais botões além dos botões de Ok e Cancel
+	// 6 - < lCentered >   - Centralizar a janela
+	// 7 - < nPosX >       - Se não centralizar janela coordenada X para início
+	// 8 - < nPosY >       - Se não centralizar janela coordenada Y para início
+	// 9 - < oDlgWizard >  - Utiliza o objeto da janela ativa
+	//10 - < cLoad >       - Nome do perfil se caso for carregar
+	//11 - < lCanSave >    - Salvar os dados informados nos parâmetros por perfil
+	//12 - < lUserSave >   - Configuração por usuário
+
+	aadd(aParamBox, {1 , "Numero da NF "     , Space(TamSX3("D1_DOC")[1])    , "@!" , "", "SF1", ".T." , 80, .F.})
+	aadd(aParamBox, {1 , "Serie da NF "      , Space(TamSX3("D1_SERIE")[1])  , "@!" , ""                            , ""   , ".T." , 60, .F.})
+	aadd(aParamBox, {1 , "Fornecedor da NF " , Space(TamSX3("D1_FORNECE")[1]), "@!" , "", "SA2", ".T." , 80, .F.})
+	aadd(aParamBox, {1 , "Loja da NF "       , Space(TamSX3("D1_LOJA")[1])   , "@!" , ""                            , ""   , ".T." , 60, .F.})
+	aadd(aParamBox, {1 , "Cod. Produto de : "     , Space(TamSX3("D1_COD")[1])    , "@!" , "", "SB1", ".T." , 80, .F.})
+	aadd(aParamBox, {1 , "Cod. Produto ate: "     , Space(TamSX3("D1_COD")[1])    , "@!" , "", "SB1", ".T." , 80, .F.})
+	aadd(aParamBox, {1 , "Grupo. Produto de: "     , Space(TamSX3("B1_GRUPO")[1])    , "@!" , "", "SBM", ".T." , 80, .F.})
+	aadd(aParamBox, {1 , "Grupo. Produto ate: "     , Space(TamSX3("B1_GRUPO")[1])    , "@!" , "", "SBM", ".T." , 80, .F.})
+	aAdd(aParamBox, {2 , "Tipo de Impressão:", ::cQrCodBar, {"1=QrCode", "2=Codigo de Barras"}, 090, ".T.", .T.})
+
+	aadd(aParamBox, {1 , "Qtd pra impressao ", 1							 , "@99", "Positivo()"				    , ""   , ".T." , 60, .F.})
+	aadd(aParamBox, {1 , ""					 , ""							 , ""   , ""						    , ""   , ".T." ,  0, .F.})
+
+
+	//-ParamBox(aParametros,cTitle,aRet,bOk,aButtons,lCentered,nPosX,nPosY,oDlgWizard,cLoad,lCanSave,lUserSave)
+	if !ParamBox(aParamBox,cTitle,aRetBox,bOk,aButtons,lCentered,nPosX,nPosY,,cLoad,lCanSave,lUserSave)
+		lRet := .F.
+	else
+		::cNFiscal  := aRetBox[1]
+		::cSerie    := aRetBox[2]
+		::cFornec   := aRetBox[3]
+		::cLojaFor  := aRetBox[4]
+		::cProdde   := aRetBox[5]
+		::cProdate  := aRetBox[6]
+		::cGrupode  := aRetBox[7]
+		::cGrupoate := aRetBox[8]
+		::cQrCodBar := aRetBox[9]
+		::nQtdImp   := aRetBox[10]
+
+	endif
+Return lRet
+
+
+/*/{Protheus.doc} etiqProd
+Metodo responsavel pela impressão de Etiqueta Zebra -> Corpo ZPL de Produtos
+- Print Density: 12 dpmm (300 dpi)
+- Label Size...: 5,5 x 2,5 cm
+- Impressora Modelo ZD420, ZD230
+@type function
+@version 1.0
+@author Ademar Fernandes Jr.
+@since 27/10/2023
+/*/
+method etiqProd(nQtdd) class TvImpZebra
+	local lRet     := .T.
+	local nQtd     := 0
+	local cPorta   := "LPT1" //- \\localhost\ZD420-203dpi
+	local cString  := ""
+	local a1Area   := GetArea()
+	Local cCBA     := 'CBA'  //casa branca
+	Local cJAU     := 'JAU'  //jau
+	Local cMGM     := 'MGM'  //mogi mirim
+	//Local cBAU     := 'BAU'  //bauru
+	Local cLPA     := 'LPA'  //lencois paulista
+	Local cARA     := 'ARA'  //araras
+	Local cFER     := 'FER'  //pindamonhangaba
+	Local cPIR     := 'PIR'  //piracicaba
+	Local cBRA     := 'BRA'  //bragança paulista
+	//Local cPFE     := 'PFE'  //porto ferreira
+	Local cTBT     := 'TBT'  //taubate
+	Local lQrcode  := .f.
+	Local lCodBar  := .f.
+	default nQtdd  := 1
+
+
+	if ::cQrCodBar == "1"
+		lQrCode := .t.
+	else
+		lCodBar := .t.
+	endif
+
+	dbSelectArea("SB1") //-Cadastro de Produtos
+	dbSetOrder(1)       //-B1_FILIAL+B_COD
+	If !dbSeek(FWxFilial("SB1")+::cProduto,.F.)
+		self:cError := OemToAnsi("Produto não encontrado: "+Alltrim(::cProduto))
+		MsgAlert(self:cError,OemToAnsi("[TerraVerde] Atenção!"))
+		Return .F.
+	Endif
+
+	dbSelectArea("SBZ") //-Indicadores de Produtos
+	dbSetOrder(1)       //-BZ_FILIAL+BZ_COD
+	::cLocaliz := ""
+	If dbSeek(FWxFilial("SBZ")+::cProduto,.F.)
+		::cLocaliz := SBZ->BZ_LOCALI2
+	Endif
+	if lCodBar
+		cString += Chr(13)+Chr(10)+"^XA"
+
+		cString += Chr(13)+Chr(10)+"^FX Etiqueta de produtos - 5,5 x 2,5 cm."
+		cString += Chr(13)+Chr(10)+"^MD30"
+		cString += Chr(13)+Chr(10)+"^MMT"
+		cString += Chr(13)+Chr(10)+"^PW777"	//-"^PW831"
+		cString += Chr(13)+Chr(10)+"^LL406"
+		cString += Chr(13)+Chr(10)+"^LS0"
+
+		cString += Chr(13)+Chr(10)+"^BY1,3,60^FT161,081^BCN,,N,N"   //-BY2=Cod.Barras.Grande; BY1=Cod.Barras.Pequeno
+		cString += Chr(13)+Chr(10)+"^FH\^FD>:"+Alltrim(::cProduto)+">70000^FS"
+		if !Empty(::cLocaliz)
+			cString += Chr(13)+Chr(10)+"^FT0,071^A0N,33,34^FB1111,1,14,C^FH\^CI28^FD"+Alltrim(::cLocaliz)+"^FS^CI27"
+		endif
+		cString += Chr(13)+Chr(10)+"^FT0,141^A0N,55,56^FB809,1,14,C^FH\^CI28^FD"+Alltrim(::cProduto)+"^FS^CI27"
+		cString += Chr(13)+Chr(10)+"^FPH,2^FT0,181^A0N,17,23^FB800,1,4,C^FH\^CI28^FD"+Alltrim(SB1->B1_DESC)+"^FS^CI27"
+
+		//Patini: Tratamento para carregar a sigla da filial
+		if cFilAnt == '0101'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cCBA+"^FS^CI27"
+		elseif cFilAnt == '0102'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cJAU+"^FS^CI27"
+		elseif cFilAnt == '0103'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cMGM+"^FS^CI27"
+		elseif cFilAnt == '0105'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cLPA+"^FS^CI27"
+		elseif cFilAnt == '0106'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cARA+"^FS^CI27"
+		elseif cFilAnt == '0109'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cFER+"^FS^CI27"
+		elseif cFilAnt == '0110'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cTBT+"^FS^CI27"
+		elseif cFilAnt == '0111'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cPIR+"^FS^CI27"
+		elseif cFilAnt == '0112'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cBRA+"^FS^CI27"
+		endif
+
+		cString += Chr(13)+Chr(10)+"^PQ1,0,1,Y"
+		cString += Chr(13)+Chr(10)+"^XZ"
+		cString += Chr(13)+Chr(10)
+
+	else //qrcode
+
+		cString += Chr(13)+Chr(10)+"^XA"
+
+		cString += Chr(13)+Chr(10)+"CI0^XZ"
+		cString += Chr(13)+Chr(10)+"^XA"
+		cString += Chr(13)+Chr(10)+"^MMT"
+		cString += Chr(13)+Chr(10)+"^PW777"	//-"^PW831"
+		cString += Chr(13)+Chr(10)+"^LL406"
+		cString += Chr(13)+Chr(10)+"^LS0"
+
+		cString += Chr(13)+Chr(10)+"^FT 145,120^BQN,2,3"   //-BY2=Cod.Barras.Grande; BY1=Cod.Barras.Pequeno
+		cString += Chr(13)+Chr(10)+"^FDLA,"+Alltrim(::cProduto)+"^FS"
+		if !Empty(::cLocaliz)
+			cString += Chr(13)+Chr(10)+"^FT0,071^A0N,33,34^FB1111,1,14,C^FH\^CI28^FD"+Alltrim(::cLocaliz)+"^FS^CI27"
+		endif
+		cString += Chr(13)+Chr(10)+"^FT0,141^A0N,55,56^FB809,1,14,C^FH\^CI28^FD"+Alltrim(::cProduto)+"^FS^CI27"
+		cString += Chr(13)+Chr(10)+"^FPH,2^FT0,181^A0N,17,23^FB800,1,4,C^FH\^CI28^FD"+Alltrim(SB1->B1_DESC)+"^FS^CI27"
+
+		//Patini: Tratamento para carregar a sigla da filial
+		if cFilAnt == '0101'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cCBA+"^FS^CI27"
+		elseif cFilAnt == '0102'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cJAU+"^FS^CI27"
+		elseif cFilAnt == '0103'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cMGM+"^FS^CI27"
+		elseif cFilAnt == '0105'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cLPA+"^FS^CI27"
+		elseif cFilAnt == '0106'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cARA+"^FS^CI27"
+		elseif cFilAnt == '0109'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cFER+"^FS^CI27"
+		elseif cFilAnt == '0110'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cTBT+"^FS^CI27"
+		elseif cFilAnt == '0111'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cPIR+"^FS^CI27"
+		elseif cFilAnt == '0112'
+			cString += Chr(13)+Chr(10)+"^FT0,181^A0N,17,23^FB350,1,4,C^FH\^CI28^FD"+cBRA+"^FS^CI27"
+		endif
+
+		cString += Chr(13)+Chr(10)+"^PQ1,0,1,Y"
+		cString += Chr(13)+Chr(10)+"^XZ"
+		cString += Chr(13)+Chr(10)
+	endif
+
+	MemoWrite("IMPZEBRA.TXT",cString)
+	CpyS2T( "IMPZEBRA.TXT", "C:\TEMP", .F. )
+
+	cString	:= "copy impzebra.txt "+cPorta +chr(13)+chr(10)
+
+	MemoWrite("IMPZEBRA.BAT",cString)
+	CpyS2T( "IMPZEBRA.BAT", "C:\TEMP", .F. )
+
+	For nQtd := 1 To nQtdd
+		////nRet := WinExec("C:\TEMP\IMPZEBRA.BAT")
+		ShellExecute("OPEN", "Impzebra.bat", "", "c:\temp\", 1)
+		Inkey(1)
+	Next nQtd
+
+	RestArea(a1Area)
+Return lRet
+
+/*/{Protheus.doc} etiqLocaliz
+Metodo responsavel pela impressão de Etiqueta Zebra -> Corpo ZPL da Localizaçao
+- Print Density: 12 dpmm (300 dpi)
+- Label Size...: 5,5 x 2,5 cm
+@type function
+@version 1.0
+@author Ademar Fernandes Jr.
+@since 31/10/2023
+/*/
+method etiqLocaliz(nQtdd) class TvImpZebra
+	local lRet     := .T.
+	local cPorta   := "LPT1" //- \\localhost\ZD420-203dpi
+	local cString  := ""
+	local a1Area   := GetArea()
+	Local lQrcode  := .f.
+	Local lCodBar  := .f.
+	Local cQuery1  := ""
+	Local nQtd     := 0
+	local nTReg1  := 0
+	Local cLocaliz := ""
+	default nQtdd  := 1
+
+	cQuery1 := " SELECT DISTINCT BZ_FILIAL,BZ_LOCALI2 "+CRLF
+	cQuery1 += " FROM "+RetSqlName("SBZ")+ " SBZ (nolock)"+CRLF
+	cQuery1 += " WHERE SBZ.D_E_L_E_T_ = ' ' "+CRLF
+	cQuery1 += "	AND BZ_FILIAL   = '"+FwxFilial("SBZ")+"' "+CRLF
+	cQuery1 += "    AND BZ_LOCALI2 BETWEEN '"+ALLTRIM(::cLocalde)+"' AND '"+ALLTRIM(::cLocalAte)+"'"+CRLF
+	cQuery1 += " ORDER BY BZ_FILIAL,BZ_LOCALI2 "+ CRLF
+
+	cQuery1 := ChangeQuery(cQuery1)
+
+	::cAlias1Q := GetNextAlias()
+	if !Empty(::cAlias1Q) .And. Select(::cAlias1Q) > 0
+		(::cAlias1Q)->(dbCloseArea())
+	endif
+	TcQuery cQuery1 New Alias (::cAlias1Q)
+
+	COUNT to nTReg1
+	(::cAlias1Q)->(dbGoTop())
+
+	if nTReg1 == 0
+		self:cError := "Nenhum registro encontrado para os filtros informados!"
+	endif
+
+	if ::cQrCodBar == "1"
+		lQrCode := .t.
+	else
+		lCodBar := .t.
+	endif
+
+	(::cAlias1Q)->(dbGoTop())
+	Do while (::cAlias1Q)->(!eof())
+		cLocaliz := (::cAlias1Q)->BZ_LOCALI2
+
+		if lCodBar //CODIGO DE BARRAS
+
+			cString += Chr(13)+Chr(10)+"^XA"
+
+			cString += Chr(13)+Chr(10)+"^FX Etiqueta de localizaçao (SBZ) - 5,5 x 2,5 cm."
+			cString += Chr(13)+Chr(10)+"^MMT"
+			cString += Chr(13)+Chr(10)+"^PW777"	//-"^PW831"
+			cString += Chr(13)+Chr(10)+"^LL406"
+			cString += Chr(13)+Chr(10)+"^LS0"
+
+			cString += Chr(13)+Chr(10)+"^BY1,3,60^FT161,081^BCN,,N,N"   //-BY2=Cod.Barras.Grande; BY1=Cod.Barras.Pequeno
+			cString += Chr(13)+Chr(10)+"^FH\^FD>:"+Alltrim(cLocaliz)+">70000^FS"
+			cString += Chr(13)+Chr(10)+"^FT0,141^A0N,55,56^FB809,1,14,C^FH\^CI28^FD"+Alltrim(cLocaliz)+"^FS^CI27"
+
+			cString += Chr(13)+Chr(10)+"^PQ1,0,1,Y"
+			cString += Chr(13)+Chr(10)+"^XZ"
+			cString += Chr(13)+Chr(10)
+
+		else //QRCODE
+			cString += Chr(13)+Chr(10)+"^XA"
+			cString += Chr(13)+Chr(10)+"CI0^XZ"
+			cString += Chr(13)+Chr(10)+"^XA"
+
+			cString += Chr(13)+Chr(10)+"^FX Etiqueta de localizaçao (SBZ) - 5,5 x 2,5 cm."
+			cString += Chr(13)+Chr(10)+"^MMT"
+			cString += Chr(13)+Chr(10)+"^PW777"	//-"^PW831"
+			cString += Chr(13)+Chr(10)+"^LL0406"
+			cString += Chr(13)+Chr(10)+"^LS0"
+
+			cString += Chr(13)+Chr(10)+"^FT 145,100^BQN,2,3"   //-BY2=Cod.Barras.Grande; BY1=Cod.Barras.Pequeno
+			cString += Chr(13)+Chr(10)+"^FDLA, "+Alltrim(cLocaliz)+"^FS"
+			cString += Chr(13)+Chr(10)+"^FT0,141^A0N,55,56^FB809,1,14,C^FH\^CI28^FD"+Alltrim(cLocaliz)+"^FS^CI27"
+
+			cString += Chr(13)+Chr(10)+"^PQ1,0,1,Y"
+			cString += Chr(13)+Chr(10)+"^XZ"
+			cString += Chr(13)+Chr(10)
+		endif
+        MemoWrite("IMPZEBRA.TXT",cString)
+		CpyS2T( "IMPZEBRA.TXT", "C:\TEMP", .F. )
+
+		cString	:= "copy impzebra.txt "+cPorta +chr(13)+chr(10)
+
+		MemoWrite("IMPZEBRA.BAT",cString)
+		CpyS2T( "IMPZEBRA.BAT", "C:\TEMP", .F. )
+
+		For nQtd := 1 To nQtdd
+			////nRet := WinExec("C:\TEMP\IMPZEBRA.BAT")
+			ShellExecute("OPEN", "Impzebra.bat", "", "c:\temp\", 1)
+			Inkey(1)
+		Next nQtd
+
+		(::cAlias1Q)->(dbSkip())
+	EndDo
+
+	RestArea(a1Area)
+	Inkey(1)
+Return lRet
+
+/*/{Protheus.doc} TvImpZebra::getLocaliz
+Metodo responsavel por buscar as localizaçoes na SBZ
+@type method
+@version 1.0
+@author Ademar Fernandes Jr.
+@since 31/10/2023
+@return variant, Qtd de registros
+/*/
+method getLocaliz() class TvImpZebra
+	local nTReg1  := 0
+	local cQuery1 := ""
+
+	dbSelectArea("SBZ") //-Indicadores de Produtos
+	dbSetOrder(1)       //-BZ_FILIAL+BZ_COD
+
+	cQuery1 += " SELECT DISTINCT "
+	cQuery1 += " BZ_FILIAL,BZ_LOCALI2 "
+	cQuery1 += " FROM "+RetSqlName("SBZ")+" SBZ "
+	cQuery1 += " WHERE SBZ.D_E_L_E_T_ = ' ' "
+	cQuery1 += "	AND BZ_FILIAL   = '"+FwxFilial("SBZ")+"' "
+	cQuery1 += "	AND BZ_LOCALI2 >= '0' "
+	cQuery1 += "    AND BZ_LOCALI2 '"+ALLTRIM(::cLocalde)+"' AND '"+ALLTRIM(::cLocalAte)+"'"
+	cQuery1 += " ORDER BY BZ_FILIAL,BZ_LOCALI2 "
+
+	cQuery1 := ChangeQuery(cQuery1)
+
+	::cAlias1Q := GetNextAlias()
+	if !Empty(::cAlias1Q) .And. Select(::cAlias1Q) > 0
+		(::cAlias1Q)->(dbCloseArea())
+	endif
+	TcQuery cQuery1 New Alias (::cAlias1Q)
+
+	COUNT to nTReg1
+	(::cAlias1Q)->(dbGoTop())
+
+	if nTReg1 == 0
+		self:cError := "Nenhum registro encontrado para os filtros informados!"
+	endif
+return nTReg1
+
+//--------------------------------------------------------------------------------------//
+/*/{Protheus.doc} etiqColl
+Metodo responsavel pela impressão de Etiqueta Zebra -> Corpo ZPL de Collection
+- Print Density: 12 dpmm (300 dpi)
+- Label Size...: 5,5 x 2,5 cm
+- Impressora Modelo ZD420, ZD230
+@type function
+@version 1.0
+@author Patini
+@since 10/2024
+/*/
+//-------------------------------------------------------------------------------------//
+method etiqColl(nQtdd) class TvImpZebra
+	Local cQuery   := ""
+	Local cProd    := ""
+	Local cGrupo   := ""
+	Local nValor   := 0
+	local lRet     := .T.
+	local nQtd     := 0
+	local cPorta   := "LPT1" //- \\localhost\ZD420-203dpi
+	local cString  := ""
+	local a1Area   := GetArea()
+	local nTReg1   := 0
+	Local nVlrPrv1 := SuperGetMv("MV_XPRV1",.F., 1.12)
+	Local lQrcode  := .f.
+	Local lCodBar  := .f.
+//	Local nVlrPrv1 := GetDToVal(cVlrPrv1)  //converte o conteudo do parametro em numerico
+	default nQtdd  := 1
+
+	if ::cQrCodBar == "1"
+		lQrCode := .t.
+	else
+		lCodBar := .t.
+	endif
+	cQuery := " SELECT DISTINCT B1_COD,B1_DESC, B1_GRUPO,B1_PRV1" +CRLF
+	cQuery += " FROM "+RetSqlName('SB1')+ " SB1 (NOLOCK) " +CRLF
+	cQuery += " WHERE D_E_L_E_T_= ' ' " +CRLF
+	cQuery += " AND B1_FILIAL  =  '"+FwxFilial('SB1')+"'" + CRLF
+	cQuery += " AND B1_COD BETWEEN '"+ALLTRIM(::cProdde)+"' AND '"+ALLTRIM(::cProdate)+"'"	+CRLF
+	cQuery += " AND B1_GRUPO BETWEEN '"+ALLTRIM(::cGrupode)+"'AND '"+ALLTRIM(::cGrupoate)+"'"+CRLF
+	cQuery += " ORDER BY 1"
+	::cAlias1P := GetNextAlias()
+	if !Empty(::cAlias1P) .And. Select(::cAlias1P) > 0
+		(::cAlias1P)->(dbCloseArea())
+	endif
+	TcQuery cQuery New Alias (::cAlias1P)
+
+	COUNT to nTReg1
+	(::cAlias1P)->(dbGoTop())
+
+	if nTReg1 == 0
+		self:cError := "Nenhum registro encontrado para os filtros informados!"
+	endif
+
+	(::cAlias1P)->(dbGoTop())
+	Do while (::cAlias1P)->(!eof())
+		cProd := (::cAlias1P)->B1_COD
+		cGrupo:= (::cAlias1p)->B1_GRUPO
+		cDescr:= (::cAlias1P)->B1_DESC
+		nValor:= (::cAlias1P)->B1_PRV1 * nVlrPrv1
+
+		If lCodBar //codigo de barras
+			cString += Chr(13)+Chr(10)+"^XA"
+			cString += Chr(13)+Chr(10)+"^FX Etiqueta Collection - 5,5 x 2,5 cm."
+			cString += Chr(13)+Chr(10)+"^MD30"
+			cString += Chr(13)+Chr(10)+"^MMT"
+			cString += Chr(13)+Chr(10)+"^PW777"
+			cString += Chr(13)+Chr(10)+"^LL406"
+			cString += Chr(13)+Chr(10)+"^LS0"
+			cString += Chr(13)+Chr(10)+"^BY1,3,60^FT161,081^BCN,,N,N"
+			cString += Chr(13)+Chr(10)+"^FH\^FD>:"+Alltrim(cProd)+">70000^FS" //codigo de barras
+			//cString += Chr(13)+Chr(10)+"^FT0,061^A0N,33,34^FB0855,1,14,C^FH\^CI28^FDTERRAVERDE^FS^CI27" //titulo da etiqueta ou imagem
+			cString += Chr(13)+Chr(10)+"^FO350,25^GFA,1250,1250,27,,:OFB,7NF3,3NF603JF8gP07C,3MFE607JF8gP07C,1MFEC07JF8gP07C,1MFC807JF8gP07C,I07FI018I0FCgR07C,I03FI03J07CgR07C,07F3F8003J07CgR07C,03F1F8006J07CgR07C,03F9FC006J07C007F00F9C78E0FF81F03E07F8079E07E7C03FC,01F8FC00CJ07C01FFC0FBC79E1FFE1F03C1FFC07BE1IFC0FFE,01FC7E008J07C03FFE0FFC7BE3FFE0F03C1FFE07BE1IFC1IF,00FE7F018J07C07E3E0FFC7FE3C1F0F87C3E1F07FE3F1FC1F0F8007E3F03K07C07C1F0FF07F8181F0F87C7C0F07F07E07C3E078007F3F83K07C0780F0FC07EJ0F07878780F07E07C07C3C078003F1F86K07C0F80F0F807CJ0F07878780787C07807C3C03C003F8FC4K07C0JF0F807CI07F078F87IF87807807C7IFC001F8FCCK07C0JF8F807C007FF07CF0JF8780F807C7IFC001FC7D8K07C0JF8F807C01IF03CF0JF8780F807C7IFCI0FE798K07C0F8I0F807C03F8F03CF0F8I07807807C7C,I07E33L07C0F8I0F807C07C0F03DF078I07807807C7C,I07F32L07C0F8I0F807C0780F01FE078I07807807C3C,I03F06L07C0F8I0F807C0F80F01FE07CI07807C07C3C,I03F84L07C07C040F807C0F81F01FE07C0607807C07C3E03,I01F8CL07C07C1F0F807C0F83F01FC03E0F07803E0FC1F078J0FD8L07C03IF0F807C0JF00FC03IF07803IFC1IF8J0FFM07C03FFE0F807C07IF00FC01FFE07801IFC0IF,J07FM07C00FF80F807C03FCF00FC00FFC07800FF3C07FE,J07EQ03CN01FN03EL018I01F,J03E,J03C,J018,K08,hK01C1E3E1F,hK01C3733198hK01C2331318hK0342031318hK03620I318hK026273E318hK0262736318hK07E2J318hK0632I3118hK0633F311F,hK041093184,^FS^FS^CI27"
+			cString += Chr(13)+Chr(10)+"^FT0,131^A0N,33,34^FB1000,1,14,C^FH\^CI28^FD Valor: " +alltrim(transform(nValor,"@E 999,999,999.99"))+"^FS^CI27"//linha valor
+			cString += Chr(13)+Chr(10)+"^FT0,131^A0N,33,34^FB440,1,14,C^FH\^CI28^FD"+Alltrim(cProd)+"^FS^CI27"         //linha produto
+			cString += Chr(13)+Chr(10)+"^FPH,2^FT0,181^A0N,17,23^FB800,1,4,C^FH\^CI28^FD"+Alltrim(cDescr)+"^FS^CI27"   //linha descricao
+			cString += Chr(13)+Chr(10)+"^PQ1,0,1,Y"
+			cString += Chr(13)+Chr(10)+"^XZ"
+			cString += Chr(13)+Chr(10)
+
+		else//qrcode
+			cString += Chr(13)+Chr(10)+"^XA"
+			cString += Chr(13)+Chr(10)+"CI0^XZ"
+			cString += Chr(13)+Chr(10)+"^XA"
+			cString += Chr(13)+Chr(10)+"^MMT"
+			cString += Chr(13)+Chr(10)+"^PW777"
+			cString += Chr(13)+Chr(10)+"^LL0406"
+			cString += Chr(13)+Chr(10)+"^LS0"
+			cString += Chr(13)+Chr(10)+"^FT 165,110^BQN,2,4"
+			cString += Chr(13)+Chr(10)+"^FDLA,"+Alltrim(cProd)+"^FS"
+			cString += Chr(13)+Chr(10)+"^FO350,25^GFA,1250,1250,27,,:OFB,7NF3,3NF603JF8gP07C,3MFE607JF8gP07C,1MFEC07JF8gP07C,1MFC807JF8gP07C,I07FI018I0FCgR07C,I03FI03J07CgR07C,07F3F8003J07CgR07C,03F1F8006J07CgR07C,03F9FC006J07C007F00F9C78E0FF81F03E07F8079E07E7C03FC,01F8FC00CJ07C01FFC0FBC79E1FFE1F03C1FFC07BE1IFC0FFE,01FC7E008J07C03FFE0FFC7BE3FFE0F03C1FFE07BE1IFC1IF,00FE7F018J07C07E3E0FFC7FE3C1F0F87C3E1F07FE3F1FC1F0F8007E3F03K07C07C1F0FF07F8181F0F87C7C0F07F07E07C3E078007F3F83K07C0780F0FC07EJ0F07878780F07E07C07C3C078003F1F86K07C0F80F0F807CJ0F07878780787C07807C3C03C003F8FC4K07C0JF0F807CI07F078F87IF87807807C7IFC001F8FCCK07C0JF8F807C007FF07CF0JF8780F807C7IFC001FC7D8K07C0JF8F807C01IF03CF0JF8780F807C7IFCI0FE798K07C0F8I0F807C03F8F03CF0F8I07807807C7C,I07E33L07C0F8I0F807C07C0F03DF078I07807807C7C,I07F32L07C0F8I0F807C0780F01FE078I07807807C3C,I03F06L07C0F8I0F807C0F80F01FE07CI07807C07C3C,I03F84L07C07C040F807C0F81F01FE07C0607807C07C3E03,I01F8CL07C07C1F0F807C0F83F01FC03E0F07803E0FC1F078J0FD8L07C03IF0F807C0JF00FC03IF07803IFC1IF8J0FFM07C03FFE0F807C07IF00FC01FFE07801IFC0IF,J07FM07C00FF80F807C03FCF00FC00FFC07800FF3C07FE,J07EQ03CN01FN03EL018I01F,J03E,J03C,J018,K08,hK01C1E3E1F,hK01C3733198hK01C2331318hK0342031318hK03620I318hK026273E318hK0262736318hK07E2J318hK0632I3118hK0633F311F,hK041093184,^FS^FS^CI27"
+			cString += Chr(13)+Chr(10)+"^FT0,131^A0N,33,34^FB930,1,14,C^FH\^CI28^FD Valor: " +alltrim(transform(nValor,"@E 999,999,999.99"))+"^FS^CI27"
+			cString += Chr(13)+Chr(10)+"^FT0,131^A0N,33,34^FB415,1,14,C^FH\^CI28^FD"+Alltrim(cProd)+"^FS^CI27"
+			cString += Chr(13)+Chr(10)+"^FPH,2^FT0,181^A0N,17,23^FB800,1,4,C^FH\^CI28^FD"+Alltrim(cDescr)+"^FS^CI27"
+			cString += Chr(13)+Chr(10)+"^PQ1,0,1,Y"
+			cString += Chr(13)+Chr(10)+"^XZ"
+		endif
+
+		MemoWrite("IMPZEBRA.TXT",cString)
+		CpyS2T( "IMPZEBRA.TXT", "C:\TEMP", .F. )
+
+		cString	:= "copy impzebra.txt "+cPorta +chr(13)+chr(10)
+
+		MemoWrite("IMPZEBRA.BAT",cString)
+		CpyS2T( "IMPZEBRA.BAT", "C:\TEMP", .F. )
+
+		For nQtd := 1 To nQtdd
+			////nRet := WinExec("C:\TEMP\IMPZEBRA.BAT")
+			ShellExecute("OPEN", "Impzebra.bat", "", "c:\temp\", 1)
+			Inkey(1)
+		Next nQtd
+		(::cAlias1P)->(dbSkip())
+	EndDo
+
+	RestArea(a1Area)
+Return lRet

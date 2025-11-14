@@ -1,0 +1,41 @@
+#Include "tlpp-core.th"
+
+/*/{Protheus.doc} TvX3Valid
+Funçao utilizada para validar campos do SX3, como x3_valid, x3_when, etc.
+@type function
+@version 1.0
+@author Ademar Fernandes Jr.
+@since 06/10/2023
+@see https://tdn.engpro.totvs.com.br/display/tec/Tipos+Nativos
+@link https://gkcmp.com.br (Geeker Company)
+@return variant, True / False
+/*/
+User function TvX3Valid()
+    local lRet      := .T.
+	local cMsgAlert := ""
+    local cCompet   := Substr(Dtoc(dDatabase),4,7)
+    local oModel, oView
+
+    if FwIsInCallStack('OFIXA018')	//-41-Auto Peças
+        //-Colocar no X3_WHEN do campo VS1_CFNF => iif(Existblock("TvX3Valid"),U_TvX3Valid(),.T.)
+        if M->VS1_FORPAG $ SuperGetMv("ZZ_TVPGTO3",.F.,"15E/30E/2EE/3SX/101/102/310/151/152/153/")   //-Cond.Pagto. NAO SigaLoja
+            lRet := .F.
+        endif
+    endif
+    
+    if FwIsInCallStack('CNTA121')	//-69-Gestao de Contratos > Nova Mediçao
+        if M->CND_COMPET <> cCompet
+            lRet := .F.
+			cMsgAlert += OemToAnsi("A competência precisa ser a mesma da Data de Login no Protheus ("+Substr(Dtoc(dDatabase),4,7)+"). Por favor, ajuste a competência!")
+
+			MsgAlert(cMsgAlert,OemToAnsi("[TerraVerde] Atenção!"))
+
+            oModel := FWModelActive()
+            oView  := FWViewActive()
+            If (ValType(oView) == "O" .And. oView:IsActive() .And. oView:oModel:GetId() $ 'CNTA121|CNTA300|CNTA301')
+                oView:Refresh("VIEW_CND")
+            EndIf
+        endif
+    endif
+
+Return lRet

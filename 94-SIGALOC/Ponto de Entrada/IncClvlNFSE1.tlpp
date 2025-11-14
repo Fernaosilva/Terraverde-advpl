@@ -1,0 +1,49 @@
+#include 'totvs.ch'
+#include 'topconn.ch'
+
+
+/*/{Protheus.doc} User Function IncClvlNFSE1
+    Função utilizada no Ponto de Entrada M460FIM quando é disparado a partir do Rental (Faturamento Automático).
+    Função responsável por incluir no registro de contas a pagar (SE1) a classe valor do Bem (E1_CLVLDB).
+    Função executada quando chamada da rotina Faturamento Automático do Rental (SIGALOC)
+    @type  Function
+    @author Rodrigo Machado
+    @since 21/08/2024
+    @version 1.0
+/*/
+User Function IncClvlNFSE1()
+    local aAreaSD2      := SD2->(GetArea())
+    local aAreaSE1      := SE1->(GetArea())
+    local aAreaSF2      := SF2->(GetArea())
+    local cQuery        := ""
+    local cClasseVlr    := ""
+
+    DbSelectArea("SD2")
+    SD2->(DbSetorder(3))
+    If SD2->(DbSeek(SF2->(F2_FILIAL+F2_DOC+F2_SERIE+F2_CLIENTE+F2_LOJA)))
+        cClasseVlr := SD2->D2_CLVL
+    Endif  
+
+    cQuery := "SELECT R_E_C_N_O_ AS REC FROM "+RetSqlName("SE1")
+    cQuery += " WHERE E1_FILIAL = '"+xFilial("SE1")+"' AND D_E_L_E_T_<>'*' "
+    cQuery += " AND E1_PREFIXO = '"+SF2->F2_SERIE+"' AND E1_NUM = '"+SF2->F2_DOC+"' "
+    cQuery += " AND E1_TIPO = 'NF' "
+    
+    TcQuery cQuery New Alias "QRY"
+
+    While QRY->(!Eof())
+        DbSelectArea("SE1")
+        SE1->(DbGoTo(QRY->REC))
+        If SE1->(!Eof())
+            RecLock("SE1", .F.)
+                SE1->E1_CLVLDB := cClasseVlr
+            MsUnlock() 
+        Endif
+        QRY->(DbSkip())
+    EndDo
+    QRY->(DbCloseArea())
+
+    RestArea(aAreaSD2)
+    RestArea(aAreaSE1) 
+    RestArea(aAreaSF2)   
+Return 
