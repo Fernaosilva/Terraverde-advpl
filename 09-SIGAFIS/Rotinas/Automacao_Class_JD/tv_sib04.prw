@@ -37,13 +37,15 @@ User Function TV_SIB04()
 	// criar campo na sf1 de flag que ja validou
 	// pra nao rodar a segunda vez
 	Do While lContinua == .T.
+		cChave   := ''
+
 		cQuery  := " SELECT TOP 1 F1_FILIAL,F1_DOC,F1_SERIE,"
 		cQuery	+= " F1_FORNECE,F1_LOJA,F1_CHVNFE FROM " + RetSQLName('SF1') + " SF1"
 		cQuery	+= " INNER JOIN " + RetSQLName('VM0') + " VM0 ON"
 		cQuery	+= " 	VM0_DOC=F1_DOC AND VM0_SERIE=F1_SERIE AND VM0_FILIAL=F1_FILIAL AND VM0_STATUS='4' AND VM0.D_E_L_E_T_='' "
 		cQuery  += " WHERE F1_FORNECE = '674782' "
 		cQuery  += " AND   F1_LOJA    = '0013' "
-		//cQuery  += " AND   F1_FILIAL  = '0103' " //REMOVER TESTE ASSISTIDO
+		//cQuery  += " AND   F1_DOC  = '003082807' " //REMOVER TESTE ASSISTIDO
 		cQuery  += " AND   F1_STATUS  = '' "
 		cQuery  += " AND   F1_EMISSAO >= '20250901' "
 		cQuery  += " AND   F1_XSTVLD <> 'S' "
@@ -55,24 +57,18 @@ User Function TV_SIB04()
 		Dbgotop()
 
 
-		Do while .not. eof()
-			cChave := ''
-			Dbselectarea('VM0')
-			Dbsetorder(3) // VM0_FILIAL+VM0_DOC+VM0_SERIE+VM0_FORNEC+VM0_LOJA
-			Dbseek( TMPSF1->F1_FILIAL + TMPSF1->F1_DOC + TMPSF1->F1_SERIE + TMPSF1->F1_FORNECE + TMPSF1->F1_LOJA,.F. )
-			If found()
-				If VM0->VM0_STATUS == '4'
-					cChave := TMPSF1->F1_CHVNFE
-				EndIf
-			Endif
+		If .not. eof()
+			cChave := TMPSF1->F1_CHVNFE
+
 			If cChave <> ''
 				ClasDoc(cChave,TMPSF1->F1_FILIAL)
 			Endif
 			Dbselectarea("TMPSF1")
 			Dbgotop()
-			Loop
-		Enddo
-
+			
+		Else
+			lContinua:= .F.
+		EndIf
 		Dbselectarea("TMPSF1")
 		Dbclosearea()
 	Enddo
@@ -95,11 +91,6 @@ Static Function ClasDoc(cChave,cFilNf)
 		SF1->F1_DTDIGIT:= DDATABASE
 		MsUnlock()
 	Endif
-
-	//If .not. found()
-	//	Msgstop('Chave nao encontrada')
-	//	Return
-	//Endif
 
 	cQuery  := " SELECT * FROM " + RetSQLName('SD1')
 	cQuery  += " WHERE D1_DOC     = '" + SF1->F1_DOC      + "'"
@@ -164,11 +155,19 @@ Static Function ClasDoc(cChave,cFilNf)
 
 	If lMsErroAuto
 		mostraerro("\classJD\","LogClassJD.txt")
+		Dbselectarea('SF1')
+		Dbsetorder(1)
+		Dbseek(SF1->F1_FILIAL + SF1->F1_DOC + SF1->F1_SERIE +SF1->F1_FORNECE + SF1->F1_LOJA ,.F.)
+		If found()
+			RecLock('SF1',.F.)
+			SF1->F1_XSTVLD := 'S'
+			MsUnLock()
+		EndIf
 		//GPEMail("Teste Erro na Classifica  o","Erro na Classificacao NF JD: "+SF1->F1_DOC,"fernandodasilva@terraverdegrupo.com.br;silviamiake@terraverdegrupo.com.br")
-		GPEMail("Erro na Classificacao","Erro na Classificacao NF JD: "+SF1->F1_DOC,"valerio@sibe.com.br;fernandodasilva@terraverdegrupo.com.br")
+		GPEMail("Erro na Classificacao NF JD","Erro na Classificacao NF JD: "+SF1->F1_DOC + mostraerro(),"silviamiake@terraverdegrupo.com.br;fernandodasilva@terraverdegrupo.com.br")
 	Else
 		//GPEMail("Teste Nota Classificada","Nota Fiscal "+SF1->F1_DOC+" Classificada","fernandodasilva@terraverdegrupo.com.br;silviamiake@terraverdegrupo.com.br")
-		GPEMail("Nota Classificada","Nota Fiscal "+SF1->F1_DOC+" Classificada","valerio@sibe.com.br;fernandodasilva@terraverdegrupo.com.br")
+		GPEMail("Nota JD Classificada - "+SF1->F1_DOC,"Nota Fiscal "+SF1->F1_DOC+" Classificada","silviamiake@terraverdegrupo.com.br;fernandodasilva@terraverdegrupo.com.br")
 	Endif
 Return
 

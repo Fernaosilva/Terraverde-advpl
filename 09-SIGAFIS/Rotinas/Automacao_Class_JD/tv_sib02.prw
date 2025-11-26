@@ -58,6 +58,7 @@ User Function TV_SIB02(cChave)
 
 	Private nPosCOD 		:= aScan(aHeader , { |x| AllTrim(x[2]) == "D1_COD"	    } )
 
+	
 
 	//--------------------------------//
 	// Valida usuario e filial        //
@@ -270,6 +271,15 @@ User Function TV_SIB02(cChave)
 		cContas := GETMV("TV_EMAILCL")
 		GPEMail("Revisar e classificar a nota fiscal " + SF1->F1_DOC,cTexto,cContas)
 		lRet := .F.
+		Dbselectarea('SF1')
+		Dbsetorder(1)
+		Dbseek(SF1->F1_FILIAL + SF1->F1_DOC + SF1->F1_SERIE +SF1->F1_FORNECE + SF1->F1_LOJA ,.F.)
+		If found()
+			RecLock('SF1',.F.)
+			SF1->F1_XSTVLD := 'S'
+			MsUnLock()
+		EndIf
+
 	else
 		Dbselectarea('SF1')
 		Dbsetorder(1)
