@@ -20,5 +20,6 @@ User function MTA140MNU()
     endif
 
     AAdd( aRotina, { "Consulta NF", "u_TlIncDoc()", 0 , 4, 0, nil})
+    AAdd( aRotina, { "Limpar Flag SmartDocs", "U_TVSTDCL()", 0 , 4, 0, Nil})
 
 Return aRotina

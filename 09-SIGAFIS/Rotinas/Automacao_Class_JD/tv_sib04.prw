@@ -19,12 +19,16 @@ User Function TV_SIB04()
 	Local aAutoImp := {}
 	Local cQuery   := ''
 	Local cChave   := ''
-	Local lOk      := .F.
 	Local lContinua := .T.
+	Local aError	:={}
+	
+	Private cMsg	:=''
+	Private lOk     := .F.
+	Private cRecZ13	:= ''
 
-	Private cOpera   := ''
-	Private cCondi   := ''
-	Private cNatur   := ''
+	Private cOpera  := ''
+	Private cCondi  := ''
+	Private cNatur  := ''
 	Private cString
 
 	Private nBasPis := 0
@@ -37,6 +41,11 @@ User Function TV_SIB04()
 	// criar campo na sf1 de flag que ja validou
 	// pra nao rodar a segunda vez
 	Do While lContinua == .T.
+		// Timer para encerrar a rotina para não gerar duplicidade de log de monitoramento
+		IF Time() >= "23:00:00"
+			Return
+		EndIf
+		
 		cChave   := ''
 
 		cQuery  := " SELECT TOP 1 F1_FILIAL,F1_DOC,F1_SERIE,"
@@ -56,8 +65,10 @@ User Function TV_SIB04()
 		Dbselectarea("TMPSF1")
 		Dbgotop()
 
-
 		If .not. eof()
+			//Grava log inicio do monitoramento
+			MoniDocs(TMPSF1->F1_FILIAL,TMPSF1->F1_DOC,TMPSF1->F1_SERIE,.F.)
+			
 			cChave := TMPSF1->F1_CHVNFE
 
 			If cChave <> ''
@@ -65,23 +76,33 @@ User Function TV_SIB04()
 			Endif
 			Dbselectarea("TMPSF1")
 			Dbgotop()
-			
+			//Grava log de monitoramento fim da rotina
+			MonitEnd(TMPSF1->F1_FILIAL, TMPSF1->F1_DOC, TMPSF1->F1_SERIE,.F.)
 		Else
-			lContinua:= .F.
+			//Grava log inicio e fim do monitoramento de pausa
+			MoniDocs('XXXX','XXXXXXXXX','XXX',.T.)
+				Sleep(600000) //Pausa a Classificação por 10 minutos
+				cMsg := "SmartDocs - EM PAUSA"
+			MonitEnd('XXXX','XXXXXXXXX','XXX',.T.)
 		EndIf
+		
+		
 		Dbselectarea("TMPSF1")
 		Dbclosearea()
+
 	Enddo
 
 	RESET ENVIRONMENT
 
 Return
-
+//Função de Classificação do documento
 Static Function ClasDoc(cChave,cFilNf)
+	Private nValBru := 0
 	cFilAnt := cFilNf
 	aAutoImp :={}
 	_aItens := {}
 	_aCab1 :={}
+	cContas := GETMV("TV_EMAILCL") //Conta de Emails que receberão os relatorios de erros
 
 	Dbselectarea("SF1")
 	Dbsetorder(8)
@@ -137,7 +158,7 @@ Static Function ClasDoc(cChave,cFilNf)
 	aAdd(_aCab1, {"F1_FORMUL"   , "N"               , NIL})
 	aAdd(_aCab1, {"F1_DOC"      , SF1->F1_DOC       , NIL})
 	aAdd(_aCab1, {"F1_SERIE"    , SF1->F1_SERIE     , NIL})
-	aAdd(_aCab1, {"F1_EMISSAO"  , SF1->F1_EMISSAO	  , NIL})
+	aAdd(_aCab1, {"F1_EMISSAO"  , SF1->F1_EMISSAO	, NIL})
 	aAdd(_aCab1, {"F1_FORNECE"  , SF1->F1_FORNECE 	, NIL})
 	aAdd(_aCab1, {"F1_LOJA"     , SF1->F1_LOJA	    , NIL})
 	aAdd(_aCab1, {"F1_ESPECIE"  , "SPED"       	    , NIL})
@@ -147,7 +168,10 @@ Static Function ClasDoc(cChave,cFilNf)
 	aAdd(_aCab1, {"F1_COND"     , cCondi            , NIL})
 	aAdd(_aCab1, {"F1_DTDIGIT"  , dDataBase         , NIL})
 	aadd(_aCab1, {"E2_NATUREZ"  , cNatur            , NIL})
-	aAdd(_aCab1, {"F1_XUSCLAS"  ,"SmartDocs"				, NIL})
+	aAdd(_aCab1, {"F1_XUSCLAS"  ,"SmartDocs"	    , NIL})
+	If nValBru > 0
+		aAdd(_aCab1, {"F1_VALBRUT"  , nValBru       , Nil})
+	Endif
 
 	lMSHelpAuto := .T.
 	lMSErroAuto := .F.
@@ -155,6 +179,7 @@ Static Function ClasDoc(cChave,cFilNf)
 
 	If lMsErroAuto
 		mostraerro("\classJD\","LogClassJD.txt")
+		aError := {"\classJD\LogClassJD.txt"}
 		Dbselectarea('SF1')
 		Dbsetorder(1)
 		Dbseek(SF1->F1_FILIAL + SF1->F1_DOC + SF1->F1_SERIE +SF1->F1_FORNECE + SF1->F1_LOJA ,.F.)
@@ -164,10 +189,18 @@ Static Function ClasDoc(cChave,cFilNf)
 			MsUnLock()
 		EndIf
 		//GPEMail("Teste Erro na Classifica  o","Erro na Classificacao NF JD: "+SF1->F1_DOC,"fernandodasilva@terraverdegrupo.com.br;silviamiake@terraverdegrupo.com.br")
-		GPEMail("Erro na Classificacao NF JD","Erro na Classificacao NF JD: "+SF1->F1_DOC + mostraerro(),"silviamiake@terraverdegrupo.com.br;fernandodasilva@terraverdegrupo.com.br")
+		cMsg := "SmartDocs - NF JD - Erro na Classificacao "
+		GPEMail(cMsg,;
+			"Erro na Classificacao NF JD: "+SF1->F1_DOC ,;
+			"fernandodasilva@terraverdegrupo.com.br;" + cContas,;
+			aError)
 	Else
 		//GPEMail("Teste Nota Classificada","Nota Fiscal "+SF1->F1_DOC+" Classificada","fernandodasilva@terraverdegrupo.com.br;silviamiake@terraverdegrupo.com.br")
-		GPEMail("Nota JD Classificada - "+SF1->F1_DOC,"Nota Fiscal "+SF1->F1_DOC+" Classificada","silviamiake@terraverdegrupo.com.br;fernandodasilva@terraverdegrupo.com.br")
+		lOk := .T.
+		cMsg := "SmartDocs - NF JD - Classificada"
+		GPEMail(cMsg + " - "+SF1->F1_DOC,;
+			"Nota Fiscal "+SF1->F1_DOC+" Classificada",;
+			"fernandodasilva@terraverdegrupo.com.br;" + cContas)
 	Endif
 Return
 
@@ -216,6 +249,8 @@ Static Function QueOper(F1FILIAL,F1FORNECE,F1LOJA,D1ITEM,D1COD,F1CHAVE)
 		EndIf
 	EndIf
 
+	// Valor total da nota para F1_VALBRU
+	nValBru := Val(Alltrim(oNotaxml:_nfeProc:_NFe:_infNFe:_total:_ICMSTot:_vNF:Text))
 
 	cQuery := "SELECT * FROM " + RetSQLName('Z12')
 	cQuery  += " WHERE Z12_FILIAL = '" + xFilial('Z12')  + "'"
@@ -250,3 +285,65 @@ Return
 
 Static Function ValAtrib(atributo)
 Return (type(atributo) )
+
+/* Grava início do monitoramento da execução */
+Static Function MoniDocs(cFil,cDoc,cSerie,lPause )
+Local cAlias := "Z13"
+//Local cFuncao := 
+//Local cFilial
+//Local cDoc
+//Local cSerie
+
+    DbSelectArea(cAlias)
+    RecLock(cAlias, .T.)
+
+        (cAlias)->Z13_FUNCTI := 'SMARTDOCS'
+        (cAlias)->Z13_FILIAL := xFilial(cAlias)
+
+        (cAlias)->Z13_FILDOC := cFil
+        (cAlias)->Z13_DOC    := cDoc
+        (cAlias)->Z13_SERIE  := cSerie
+
+        (cAlias)->Z13_DTINI  := Date()
+        (cAlias)->Z13_HRINI  := Time()
+
+        (cAlias)->Z13_DTFIM  := Ctod("")
+        (cAlias)->Z13_HRFIM  := Space(8)
+		If lPause
+        	(cAlias)->Z13_STATUS := "P"  // Pausa
+		Else
+			(cAlias)->Z13_STATUS := "E"  // Executando        
+		EndIf
+		(cAlias)->Z13_MSGERR := ""
+		
+    MsUnlock()
+	cRecZ13 := Recno('Z13')
+Return
+
+/* Grava finalização da execução */
+Static Function MonitEnd( cFil, cDoc, cSerie,lPause)
+Local cAlias := "Z13"
+Local cKey   := xFilial(cAlias) + cFil + cDoc + cSerie
+Local cMsgO		:= "SmartDocs - NF JD - Classificada"
+Local cMsgF		:= "SmartDocs - NF JD - Erro na Classificacao"
+
+
+    DbSelectArea(cAlias)
+	DbGoTo(cRecZ13)
+    If cRecZ13 == Recno('Z13')
+        RecLock(cAlias, .F.)
+
+            (cAlias)->Z13_DTFIM  := Date()
+            (cAlias)->Z13_HRFIM  := Time()
+            If lPause
+        		(cAlias)->Z13_STATUS := "P"  // Pausa
+				(cAlias)->Z13_MSGERR := "SmartDocs - EM PAUSA"
+			else
+				(cAlias)->Z13_STATUS := IIf(lOk, "O", "F")  // OK / Falha
+				(cAlias)->Z13_MSGERR := iif(lOk,cMsgO,cMsgF)
+			Endif
+		
+        MsUnlock()
+    EndIf
+
+Return

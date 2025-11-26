@@ -28,6 +28,7 @@ User Function TV_SIB02(cChave)
 	Local nVPis  := 0
 	Local nBCof  := 0
 	Local nVCof  := 0
+	Local nDetImp := 0
 
 	Local cToken   := 'rsr62QPwUDLIIP3Ko6UL9g24A'
 	Local CnpjGrup := '09282594000145'
@@ -57,6 +58,8 @@ User Function TV_SIB02(cChave)
 	Private nPosVCOF		:= aScan(aHeader , { |x| AllTrim(x[2]) == "D1_VALIMP5" 	} )
 
 	Private nPosCOD 		:= aScan(aHeader , { |x| AllTrim(x[2]) == "D1_COD"	    } )
+
+	Private nPosCFOP 		:= aScan(aHeader , { |x| AllTrim(x[2]) == "D1_CF"	    } )
 
 	
 
@@ -257,7 +260,7 @@ User Function TV_SIB02(cChave)
 			cTexto += '<td>'+aErros[y,10]+'</td> '
 			cTexto += '</tr> '
 		Next
-		//grava html em arquivo validação remover após teste
+		/*/grava html em arquivo validação remover após teste
 		cFileLog := cPathLog + "Log_Email_" + SF1->F1_FILIAL + SF1->F1_DOC + SF1->F1_SERIE + DtoS(Date()) + "_" + StrTran(Time(),":","") + ".html"
 		If !ExistDir(cPathLog)
 			MakeDir(cPathLog)
@@ -266,7 +269,7 @@ User Function TV_SIB02(cChave)
 		If nHandle >= 0
 			FWrite(nHandle, cTexto)
 			FClose(nHandle)
-		EndIf
+		EndIf */
 
 		cContas := GETMV("TV_EMAILCL")
 		GPEMail("Revisar e classificar a nota fiscal " + SF1->F1_DOC,cTexto,cContas)
@@ -328,66 +331,90 @@ Static Function RegraZ12(F1FORNECE,F1LOJA,xImposto,xCfopX,xCst,xBase,xVal,pBase,
 
 	Do while .not. eof()
 		nZ12 += 1
-
+		// CFOPS DEVEM SER COMPATIVEIS
+		iF TRIM(aCols[nX,nPosCFOP])==TMPR->Z12_CFOERP
 		// bases devem ser iguais
-		If Z12_BSXML == '1' .AND. Z12_BS_ERP == '1'
-			If Str(xBase,15,2) <> Str(pBase,15,2)
-				if (int(xBase,15,2)-int(pBase,15,2)) > 2 .or. (int(pBase,15,2)-int(xBase,15,2)) < -2
-					aAdd(aErros,{SF1->F1_FILIAL,SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'BASE', Str(xBase,15,2),Str(pBase,15,2) } )
-				Else
-					If xImposto == 'ICMS'
-						aCols[nX,nPosBICM] := xBase
-						MaFisAlt("IT_BASEICM", aCols[nX,nPosBICM], nX)
-					Endif
-					If xImposto == 'ICRET'
-						aCols[nX,nPosBST] := xBase
-						MaFisAlt("IT_BASESOL", aCols[nX,nPosBST], nX)
-					Endif
-					If xImposto == 'IPI'
-						aCols[nX,nPosBIPI] := xBase
-						MaFisAlt("IT_BASEIPI", aCols[nX,nPosBIPI], nX)
-					Endif
-					If xImposto == 'PIS'
-						aCols[nX,nPosBPIS] := xBase
-						MaFisAlt("IT_BASEPS2", aCols[nX,nPosBPIS], nX)
-					Endif
-					If xImposto == 'COFINS'
-						aCols[nX,nPosBCOF] := xBase
-						MaFisAlt("IT_BASECF2", aCols[nX,nPosBCOF], nX)
+			If Z12_BSXML == '1' .AND. Z12_BS_ERP == '1'
+				If Str(xBase,15,2) <> Str(pBase,15,2)
+					if (int(xBase,15,2)-int(pBase,15,2)) > 2 .or. (int(pBase,15,2)-int(xBase,15,2)) < -2
+						aAdd(aErros,{SF1->F1_FILIAL,SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'BASE', Str(xBase,15,2),Str(pBase,15,2) } )
+					Else
+						If xImposto == 'ICMS'
+							aCols[nX,nPosBICM] := xBase
+							MaFisAlt("IT_BASEICM", aCols[nX,nPosBICM], nX)
+						Endif
+						If xImposto == 'ICRET'
+							aCols[nX,nPosBST] := xBase
+							MaFisAlt("IT_BASESOL", aCols[nX,nPosBST], nX)
+						Endif
+						If xImposto == 'IPI'
+							aCols[nX,nPosBIPI] := xBase
+							MaFisAlt("IT_BASEIPI", aCols[nX,nPosBIPI], nX)
+						Endif
+						If xImposto == 'PIS'
+							aCols[nX,nPosBPIS] := xBase
+							MaFisAlt("IT_BASEPS2", aCols[nX,nPosBPIS], nX)
+						Endif
+						If xImposto == 'COFINS'
+							aCols[nX,nPosBCOF] := xBase
+							MaFisAlt("IT_BASECF2", aCols[nX,nPosBCOF], nX)
+						Endif
 					Endif
 				Endif
+				//aAdd(aErros,{SF1->F1_FILIAL,'OK BASE IGUAL ' + SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'BASE', Str(xBase,15,2),Str(pBase,15,2) } )
+			Else
+				If xImposto == 'ICMS'
+					aCols[nX,nPosBICM] := xBase
+					MaFisAlt("IT_BASEICM", aCols[nX,nPosBICM], nX)
+				Endif
+				If xImposto == 'ICRET'
+					aCols[nX,nPosBST] := xBase
+					MaFisAlt("IT_BASESOL", aCols[nX,nPosBST], nX)
+				Endif
+				If xImposto == 'IPI'
+					aCols[nX,nPosBIPI] := xBase
+					MaFisAlt("IT_BASEIPI", aCols[nX,nPosBIPI], nX)
+				Endif
+				If xImposto == 'PIS'
+					aCols[nX,nPosBPIS] := xBase
+					MaFisAlt("IT_BASEPS2", aCols[nX,nPosBPIS], nX)
+				Endif
+				If xImposto == 'COFINS'
+					aCols[nX,nPosBCOF] := xBase
+					MaFisAlt("IT_BASECF2", aCols[nX,nPosBCOF], nX)
+				Endif
 			Endif
-			//aAdd(aErros,{SF1->F1_FILIAL,'OK BASE IGUAL ' + SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'BASE', Str(xBase,15,2),Str(pBase,15,2) } )
-		Else
-			If xImposto == 'ICMS'
-				aCols[nX,nPosBICM] := xBase
-				MaFisAlt("IT_BASEICM", aCols[nX,nPosBICM], nX)
-			Endif
-			If xImposto == 'ICRET'
-				aCols[nX,nPosBST] := xBase
-				MaFisAlt("IT_BASESOL", aCols[nX,nPosBST], nX)
-			Endif
-			If xImposto == 'IPI'
-				aCols[nX,nPosBIPI] := xBase
-				MaFisAlt("IT_BASEIPI", aCols[nX,nPosBIPI], nX)
-			Endif
-			If xImposto == 'PIS'
-				aCols[nX,nPosBPIS] := xBase
-				MaFisAlt("IT_BASEPS2", aCols[nX,nPosBPIS], nX)
-			Endif
-			If xImposto == 'COFINS'
-				aCols[nX,nPosBCOF] := xBase
-				MaFisAlt("IT_BASECF2", aCols[nX,nPosBCOF], nX)
-			Endif
-		Endif
 
-		DbSelectArea('TMPR')
+			DbSelectArea('TMPR')
 
-		// impostos devem ser iguais
-		If Z12_VIMXML == '1' .AND. Z12_VIMERP == '1'
-			If Str(xVal,15,2) <> Str(pVal,15,2)
-				if (int(xVal,15,2)-int(pVal,15,2)) > 2 .or. (int(pVal,15,2)-int(xVal,15,2)) < -2
-					aAdd(aErros,{SF1->F1_FILIAL,SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'VALOR', Str(xVal,15,2),Str(pVal,15,2) } )
+			// impostos devem ser iguais
+			If Z12_VIMXML == '1' .AND. Z12_VIMERP == '1'
+				If Str(xVal,15,2) <> Str(pVal,15,2)
+					if (int(xVal,15,2)-int(pVal,15,2)) > 2 .or. (int(pVal,15,2)-int(xVal,15,2)) < -2
+						aAdd(aErros,{SF1->F1_FILIAL,SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'VALOR', Str(xVal,15,2),Str(pVal,15,2) } )
+					Else
+						If xImposto == 'ICMS'
+							aCols[nX,nPosVICM] := xVal
+							MaFisAlt("IT_VALICM", aCols[nX,nPosVICM], nX)
+						Endif
+						If xImposto == 'ICRET'
+							aCols[nX,nPosVST] := xVal
+							MaFisAlt("IT_VALSOL", aCols[nX,nPosVST], nX)
+						Endif
+						If xImposto == 'IPI'
+							aCols[nX,nPosVIPI] := xVal
+							MaFisAlt("IT_VALIPI", aCols[nX,nPosVIPI], nX)
+						Endif
+						If xImposto == 'PIS'
+							aCols[nX,nPosVPIS] := xVal
+							MaFisAlt("IT_VALPS2", aCols[nX,nPosVPIS], nX)
+						Endif
+						If xImposto == 'COFINS'
+							aCols[nX,nPosVCOF] := xVal
+							MaFisAlt("IT_VALCF2", aCols[nX,nPosVCOF], nX)
+						Endif
+					Endif
+					//aAdd(aErros,{SF1->F1_FILIAL,'OK VALIMP IGUAL ' + SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'VALOR', Str(xVal,15,2),Str(pVal,15,2) } )
 				Else
 					If xImposto == 'ICMS'
 						aCols[nX,nPosVICM] := xVal
@@ -410,52 +437,31 @@ Static Function RegraZ12(F1FORNECE,F1LOJA,xImposto,xCfopX,xCst,xBase,xVal,pBase,
 						MaFisAlt("IT_VALCF2", aCols[nX,nPosVCOF], nX)
 					Endif
 				Endif
-				//aAdd(aErros,{SF1->F1_FILIAL,'OK VALIMP IGUAL ' + SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'VALOR', Str(xVal,15,2),Str(pVal,15,2) } )
-			Else
-				If xImposto == 'ICMS'
-					aCols[nX,nPosVICM] := xVal
-					MaFisAlt("IT_VALICM", aCols[nX,nPosVICM], nX)
-				Endif
-				If xImposto == 'ICRET'
-					aCols[nX,nPosVST] := xVal
-					MaFisAlt("IT_VALSOL", aCols[nX,nPosVST], nX)
-				Endif
-				If xImposto == 'IPI'
-					aCols[nX,nPosVIPI] := xVal
-					MaFisAlt("IT_VALIPI", aCols[nX,nPosVIPI], nX)
-				Endif
-				If xImposto == 'PIS'
-					aCols[nX,nPosVPIS] := xVal
-					MaFisAlt("IT_VALPS2", aCols[nX,nPosVPIS], nX)
-				Endif
-				If xImposto == 'COFINS'
-					aCols[nX,nPosVCOF] := xVal
-					MaFisAlt("IT_VALCF2", aCols[nX,nPosVCOF], nX)
+			Endif
+			DbSelectArea('TMPR')
+
+			//                     deve ser zero
+			If Z12_BSXML == '1' .AND. Z12_BS_ERP == '0'
+				If pBase > 0
+					aAdd(aErros,{SF1->F1_FILIAL,SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'BASE', Str(xBase,15,2),Str(pBase,15,2) } )
+				Else
+					//aAdd(aErros,{SF1->F1_FILIAL,'OK BASE XML>0 PROTHEUS=0 ' + SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'BASE', Str(xBase,15,2),Str(pBase,15,2) } )
 				Endif
 			Endif
-		Endif
-		DbSelectArea('TMPR')
+			DbSelectArea('TMPR')
 
-		//                     deve ser zero
-		If Z12_BSXML == '1' .AND. Z12_BS_ERP == '0'
-			If pBase > 0
-				aAdd(aErros,{SF1->F1_FILIAL,SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'BASE', Str(xBase,15,2),Str(pBase,15,2) } )
-			Else
-				//aAdd(aErros,{SF1->F1_FILIAL,'OK BASE XML>0 PROTHEUS=0 ' + SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'BASE', Str(xBase,15,2),Str(pBase,15,2) } )
+			//                      deve ser zero
+			If Z12_VIMXML == '1' .AND. Z12_VIMERP == '0'
+				If pVal > 0
+					aAdd(aErros,{SF1->F1_FILIAL,SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'VALOR', Str(xVal,15,2),Str(pVal,15,2) } )
+				Else
+					//aAdd(aErros,{SF1->F1_FILIAL,'OK VAIMP XML>=0 PROTHEUS=0 ' + SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'VALOR', Str(xVal,15,2),Str(pVal,15,2) } )
+				Endif
 			Endif
-		Endif
-		DbSelectArea('TMPR')
-
-		//                      deve ser zero
-		If Z12_VIMXML == '1' .AND. Z12_VIMERP == '0'
-			If pVal > 0
-				aAdd(aErros,{SF1->F1_FILIAL,SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'VALOR', Str(xVal,15,2),Str(pVal,15,2) } )
-			Else
-				//aAdd(aErros,{SF1->F1_FILIAL,'OK VAIMP XML>=0 PROTHEUS=0 ' + SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xImposto + xCst, 'VALOR', Str(xVal,15,2),Str(pVal,15,2) } )
-			Endif
-		Endif
-		DbSelectArea('TMPR')
-
+			DbSelectArea('TMPR')
+		Else
+			aAdd(aErros,{SF1->F1_FILIAL,SF1->F1_DOC+' - ' + SF1->F1_SERIE, DTOC(SF1->F1_EMISSAO), ALLTRIM(SA2->A2_NOME), xItem, xProd, xCfopX ,'CFOP XML é', 'Diff do CFOP TES',aCols[nX,nPosCFOP] ,'' } )
+		EndIf
 		Dbskip()
 		Loop
 	Enddo
