@@ -21,14 +21,17 @@ user function TlIncDoc( cGDt, cGHora, cGet1 )
     
     default cGDt      := DtoC( SF1->F1_XDTINC )
     default cGDt1     := Dtoc(SF1->F1_XDTCLAS)
+    default cGDt2     := Dtoc(SF1->F1_XDTCONF)
     default cGHora    := SF1->F1_XHRINC
     default cGet1     := SF1->F1_XUSRINC
     default cGet2     := SF1->F1_XHRCLAS
     default cGet3     := SF1->F1_XUSCLAS
     
+    default cGet4     := SF1->F1_XHRCONF
+    
     static oDlg
 
-    DEFINE MSDIALOG oDlg TITLE "LOG -INCLUSAO / CLASSIFICAÇÃO" FROM 000, 000  TO 400, 355 COLORS 0, 16777215 PIXEL
+    DEFINE MSDIALOG oDlg TITLE "LOG -INCLUSAO / CONFERENCIA / CLASSIFICAÇÃO" FROM 000, 000  TO 500, 355 COLORS 0, 16777215 PIXEL
     //log inclusao
         @ 006, 006 GROUP oGrp TO 072, 168 PROMPT "Log de inclusão" OF oDlg COLOR 0, 16777215 PIXEL
 
@@ -41,18 +44,29 @@ user function TlIncDoc( cGDt, cGHora, cGet1 )
         @ 052, 030 SAY oSUsr PROMPT "Usuário:" SIZE 025, 007 OF oDlg COLORS 0, 16777215 PIXEL
         @ 051, 057 MSGET oGet1 VAR cGet1 SIZE 094, 010 OF oDlg COLORS 0, 16777215 PIXEL
 
+    //log de conferencia
+        @ 078, 006 GROUP oGrp1 TO 144, 168 PROMPT "Log de Conferencia" OF oDlg COLOR 0, 16777215 PIXEL
+
+        @ 092, 015 SAY  oSDt1 PROMPT "Data Confer.:" SIZE 042, 007 OF oDlg COLORS 0, 16777215 PIXEL
+        @ 092, 057 MSGET oGDt1 VAR cGDt2 SIZE 060, 010 OF oDlg COLORS 0, 16777215 READONLY PIXEL
+
+        @ 108, 018 SAY oSHr1 PROMPT "Hora Confer.:" SIZE 038, 007 OF oDlg COLORS 0, 16777215 PIXEL
+        @ 108, 057 MSGET oGHora1 VAR cGet4 SIZE 060, 010 OF oDlg COLORS 0, 16777215 READONLY PIXEL
+
+      
+        
     //log de classificação    
-        @ 078, 006 GROUP oGrp1 TO 144, 168 PROMPT "Log de Classificação" OF oDlg COLOR 0, 16777215 PIXEL
+        @ 150, 006 GROUP oGrp1 TO 216, 168 PROMPT "Log de Classificação" OF oDlg COLOR 0, 16777215 PIXEL
 
-        @ 092, 015 SAY  oSDt1 PROMPT "Data Classif.:" SIZE 042, 007 OF oDlg COLORS 0, 16777215 PIXEL
-        @ 092, 057 MSGET oGDt1 VAR cGDt1 SIZE 060, 010 OF oDlg COLORS 0, 16777215 READONLY PIXEL
+        @ 164, 015 SAY  oSDt1 PROMPT "Data Classif.:" SIZE 042, 007 OF oDlg COLORS 0, 16777215 PIXEL
+        @ 164, 057 MSGET oGDt1 VAR cGDt1 SIZE 060, 010 OF oDlg COLORS 0, 16777215 READONLY PIXEL
 
-        @ 108, 018 SAY oSHr1 PROMPT "Hora Classifi.:" SIZE 038, 007 OF oDlg COLORS 0, 16777215 PIXEL
-        @ 108, 057 MSGET oGHora1 VAR cGet2 SIZE 060, 010 OF oDlg COLORS 0, 16777215 READONLY PIXEL
+        @ 180, 018 SAY oSHr1 PROMPT "Hora Classifi.:" SIZE 038, 007 OF oDlg COLORS 0, 16777215 PIXEL
+        @ 180, 057 MSGET oGHora1 VAR cGet2 SIZE 060, 010 OF oDlg COLORS 0, 16777215 READONLY PIXEL
 
-        @ 124, 030 SAY oSUsr1 PROMPT "Usuário:" SIZE 025, 007 OF oDlg COLORS 0, 16777215 PIXEL
-        @ 123, 057 MSGET oGet2 VAR cGet3 SIZE 094, 010 OF oDlg COLORS 0, 16777215 PIXEL
-        @ 160, 070 BUTTON oBtOk PROMPT "Confirmar" SIZE 037, 012 OF oDlg PIXEL ACTION ( oDlg:End() )
+        @ 196, 030 SAY oSUsr1 PROMPT "Usuário:" SIZE 025, 007 OF oDlg COLORS 0, 16777215 PIXEL
+        @ 197, 057 MSGET oGet2 VAR cGet3 SIZE 094, 010 OF oDlg COLORS 0, 16777215 PIXEL
+        @ 232, 070 BUTTON oBtOk PROMPT "Confirmar" SIZE 037, 012 OF oDlg PIXEL ACTION ( oDlg:End() )
        
     ACTIVATE MSDIALOG oDlg CENTERED
 

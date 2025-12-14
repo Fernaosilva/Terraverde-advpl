@@ -54,7 +54,7 @@ User Function TV_SIB04()
 		cQuery	+= " 	VM0_DOC=F1_DOC AND VM0_SERIE=F1_SERIE AND VM0_FILIAL=F1_FILIAL AND VM0_STATUS='4' AND VM0.D_E_L_E_T_='' "
 		cQuery  += " WHERE F1_FORNECE = '674782' "
 		cQuery  += " AND   F1_LOJA    = '0013' "
-		//cQuery  += " AND   F1_DOC  = '003082807' " //REMOVER TESTE ASSISTIDO
+		//cQuery  += " AND   F1_FILIAL  = '0102' " //REMOVER TESTE ASSISTIDO
 		cQuery  += " AND   F1_STATUS  = '' "
 		cQuery  += " AND   F1_EMISSAO >= '20250901' "
 		cQuery  += " AND   F1_XSTVLD <> 'S' "
@@ -81,7 +81,7 @@ User Function TV_SIB04()
 		Else
 			//Grava log inicio e fim do monitoramento de pausa
 			MoniDocs('XXXX','XXXXXXXXX','XXX',.T.)
-				Sleep(600000) //Pausa a Classificação por 10 minutos
+				Sleep(300000) //Pausa a Classificação por 5 minutos
 				cMsg := "SmartDocs - EM PAUSA"
 			MonitEnd('XXXX','XXXXXXXXX','XXX',.T.)
 		EndIf
@@ -198,9 +198,9 @@ Static Function ClasDoc(cChave,cFilNf)
 		//GPEMail("Teste Nota Classificada","Nota Fiscal "+SF1->F1_DOC+" Classificada","fernandodasilva@terraverdegrupo.com.br;silviamiake@terraverdegrupo.com.br")
 		lOk := .T.
 		cMsg := "SmartDocs - NF JD - Classificada"
-		GPEMail(cMsg + " - "+SF1->F1_DOC,;
-			"Nota Fiscal "+SF1->F1_DOC+" Classificada",;
-			"fernandodasilva@terraverdegrupo.com.br;" + cContas)
+		//GPEMail(cMsg + " - "+SF1->F1_DOC,;
+		//	"Nota Fiscal "+SF1->F1_DOC+" Classificada",;
+		//	"fernandodasilva@terraverdegrupo.com.br;" + cContas)
 	Endif
 Return
 
